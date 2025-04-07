@@ -219,35 +219,60 @@ class ApiService {
     }
   }
 
-  // Audio transcription
-Future<String> transcribeAudio(File audioFile) async {
+  // Audio transcription with improved error handling
+  Future<Map<String, dynamic>> transcribeAudio(File audioFile, [String? sessionId]) async {
     try {
       final formData = FormData.fromMap({
         'audio': await MultipartFile.fromFile(
           audioFile.path,
           filename: 'recording_${DateTime.now().millisecondsSinceEpoch}.wav',
-          contentType: MediaType('audio', 'wav'),  // Now properly recognized
+          contentType: MediaType('audio', 'wav'),
         ),
+        if (sessionId != null) 'session_id': sessionId,
       });
 
       final response = await _dio.post(
-        '/api/transcribe',
+        ApiConfig.transcribeEndpoint,
         data: formData,
+        options: Options(
+          headers: {
+            ...ApiConfig.headers,
+            'Content-Type': 'multipart/form-data',
+          },
+          receiveTimeout: const Duration(seconds: 60), // Extended timeout for audio processing
+        ),
       );
 
-      return response.data['transcription'] as String;
+      if (response.statusCode != 200) {
+        throw Exception('Audio transcription failed with status ${response.statusCode}');
+      }
+
+      return response.data;
     } on DioException catch (e) {
+      _logError('transcribeAudio', e);
+      if (e.response?.data != null && e.response?.data is Map) {
+        final errorData = e.response?.data as Map;
+        if (errorData.containsKey('error')) {
+          throw Exception('Audio transcription failed: ${errorData['error']}');
+        }
+      }
       throw Exception('Audio transcription failed: ${e.message}');
+    } catch (e) {
+      _logError('transcribeAudio', e);
+      throw Exception('Audio transcription failed: $e');
     }
   }
+
   // File upload
-  Future<Map<String, dynamic>> uploadFile(File file) async {
+  Future<Map<String, dynamic>> uploadImage(File file, String sessionId) async {
     try {
       final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(
+        'image': await MultipartFile.fromFile(
           file.path,
           filename: file.path.split('/').last,
+          contentType: MediaType('image', 'jpeg'),
         ),
+        'session_id': sessionId,
       });
       
       final response = await _requestWithRetry(
@@ -255,11 +280,15 @@ Future<String> transcribeAudio(File audioFile) async {
           method: 'POST',
           path: ApiConfig.uploadEndpoint,
           data: formData,
+          headers: {
+            ...ApiConfig.headers,
+            'Content-Type': 'multipart/form-data',
+          },
         ),
       );
       return response.data;
     } catch (e) {
-      _logError('uploadFile', e);
+      _logError('uploadImage', e);
       rethrow;
     }
   }
@@ -284,3 +313,4 @@ Error in $method:
     }
   }
 }
+

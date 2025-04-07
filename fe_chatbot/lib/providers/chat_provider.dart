@@ -1,16 +1,15 @@
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import '../models/message.dart';
 import '../services/api_service.dart';
 import '../services/audio_service.dart';
 import '../services/permission_service.dart';
+import '../services/image_service.dart';
 import 'session_provider.dart';
 import '../services/tts_service.dart';
 
@@ -19,6 +18,7 @@ class ChatProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
   final AudioService _audioService = AudioService();
   final TTSService _ttsService = TTSService();
+  final ImageService _imageService = ImageService();
   final ImagePicker _imagePicker = ImagePicker();
 
   bool _isLoading = false;
@@ -104,10 +104,9 @@ class ChatProvider with ChangeNotifier {
     _messages.add(ChatMessage(
       content: "Saya tidak dapat terhubung ke server saat ini. Beberapa fitur mungkin terbatas. "
                "Pesan Anda akan disimpan secara lokal dan akan disinkronkan ketika koneksi pulih.",
-      role: MessageRole.assistant, // Changed from system to assistant
+      role: MessageRole.assistant,
     ));
   }
-
 
   void toggleVoiceOutput() {
     _useVoiceOutput = !_useVoiceOutput;
@@ -140,16 +139,46 @@ class ChatProvider with ChangeNotifier {
       }
     }
     
-    _pendingImage = null;
+    // Handle image processing if there's a pending image
+    if (_pendingImage != null) {
+      await _processImage(sessionId);
+    } else {
+      // Process regular text message
+      _isLoading = true;
+      notifyListeners();
+      
+      try {
+        final response = await _apiService.sendMessage(text, sessionId);
+        await _addBotMessage(response['response'], sessionId);
+      } catch (e) {
+        print('Error sending message: $e');
+        await _addBotMessage(_getErrorMessage(e), sessionId);
+      }
+    }
+  }
+
+  Future<void> _processImage(String sessionId) async {
+    if (_pendingImage == null) return;
+    
     _isLoading = true;
     notifyListeners();
     
     try {
-      final response = await _apiService.sendMessage(text, sessionId);
-      await _addBotMessage(response['response'], sessionId);
+      // Upload and analyze image
+      final response = await _imageService.uploadAndAnalyzeImage(_pendingImage!, sessionId);
+      
+      // Add bot message with analysis
+      await _addBotMessage(response['analysis'], sessionId);
+      
+      // Clear pending image
+      _pendingImage = null;
     } catch (e) {
-      print('Error sending message: $e');
-      await _addBotMessage(_getErrorMessage(e), sessionId);
+      print('Error processing image: $e');
+      await _addBotMessage('Error analyzing image: ${e.toString()}', sessionId);
+      _pendingImage = null;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
@@ -157,11 +186,11 @@ class ChatProvider with ChangeNotifier {
     return "Terjadi kesalahan tak terduga. Silakan coba lagi.";
   }
 
-Future<void> _addBotMessage(String content, String sessionId) async {
-    final cleanContent = content.replaceAll('*', ''); // Bersihkan asterisk
+  Future<void> _addBotMessage(String content, String sessionId) async {
+    final cleanContent = content.replaceAll('*', ''); // Remove asterisks for clean TTS
     final botMessage = ChatMessage(
       content: content,
-      cleanContent: cleanContent, // Simpan versi bersih
+      cleanContent: cleanContent,
       role: MessageRole.assistant,
     );
     
@@ -177,12 +206,13 @@ Future<void> _addBotMessage(String content, String sessionId) async {
     notifyListeners();
     
     if (_useVoiceOutput) {
-      _speakText(botMessage.cleanContent); // Gunakan clean content untuk TTS
+      _speakText(botMessage.cleanContent ?? cleanContent);
     }
   }
+
   Future<void> _speakText(String text) async {
     try {
-      // Pastikan text sudah clean dari formatting
+      // Make sure text is clean from formatting
       final cleanText = text.replaceAll('*', '');
       await _ttsService.speak(cleanText);
     } catch (e) {
@@ -190,7 +220,6 @@ Future<void> _addBotMessage(String content, String sessionId) async {
     }
   }
 
-// In chat_provider.dart
   Future<void> startListening(BuildContext context) async {
     try {
       // Check permissions
@@ -244,16 +273,19 @@ Future<void> _addBotMessage(String content, String sessionId) async {
       _addMessage(sessionId, audioMessage);
 
       // Send to Whisper
-      final transcription = await _apiService.transcribeAudio(recordingFile);
+      final response = await _apiService.transcribeAudio(recordingFile, sessionId);
+      final transcription = response['transcription'] as String;
+      final aiResponse = response['ai_response'] as String;
       
       // Update the message with transcription
       final index = messages.indexWhere((m) => m.id == audioMessage.id);
       if (index != -1) {
         messages[index] = messages[index].copyWith(content: transcription);
+        notifyListeners();
       }
 
-      // Send as normal message
-      await sendMessage(transcription, sessionId, sessionProvider);
+      // Add AI response directly since it's already processed by the server
+      await _addBotMessage(aiResponse, sessionId);
     } catch (e) {
       _addBotMessage("Gagal memproses rekaman suara: ${e.toString()}", sessionId);
       print('Error in stopListening: $e');
@@ -272,9 +304,10 @@ Future<void> _addBotMessage(String content, String sessionId) async {
   void _addMessage(String sessionId, ChatMessage message) {
     messages.add(message);
     notifyListeners();
-    // Optionally save to backend
+    // Save to backend
     _apiService.saveMessage(message, sessionId);
   }
+
   Future<void> pickImage(BuildContext context) async {
     try {
       final hasPermission = await PermissionService.hasStoragePermission();
@@ -332,7 +365,7 @@ Future<void> _addBotMessage(String content, String sessionId) async {
       print('Failed to delete message: $e');
       _messages.add(ChatMessage(
         content: 'Gagal menghapus pesan dari server. Pesan hanya dihapus secara lokal.',
-        role: MessageRole.assistant, // Changed from system to assistant
+        role: MessageRole.assistant,
       ));
       notifyListeners();
     }
@@ -345,3 +378,4 @@ Future<void> _addBotMessage(String content, String sessionId) async {
     super.dispose();
   }
 }
+

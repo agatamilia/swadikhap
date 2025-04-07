@@ -6,18 +6,12 @@ class ApiConfig {
   static const bool useNgrok = true;
   static const bool isProduction = false;
   
-<<<<<<< HEAD
+
   // Ngrok configuration (only used when useNgrok is true)
-  static const String ngrokSubdomain = 'ce8c-182-0-231-34'; // Replace with your ngrok subdomain
+  static const String ngrokSubdomain = '12b4-114-122-85-64'; // Replace with your ngrok subdomain
   static const String ngrokRegion = 'in'; // Region code (us, eu, ap, au, sa, jp, in)
-=======
-  // Ngrok Configuration
-  static const String ngrokSubdomain = '7d55-2404-c0-2570-00-1701-2fef';
-  static const String ngrokRegion = 'ap'; 
->>>>>>> main
-  
+
   // Server URLs
-  static const String productionBaseUrl = 'https://your-production-api.com';
   static const String localBaseUrl = 'http://localhost:5000';
   static const String androidEmulatorBaseUrl = 'http://10.0.2.2:5000';
   static const String physicalDeviceBaseUrl = 'http://192.168.125.92:5000';
@@ -29,7 +23,7 @@ class ApiConfig {
 
   // Base URL getter with platform detection
   static String get baseUrl {
-    if (isProduction) return productionBaseUrl;
+
     
     if (useNgrok) return 'https://$ngrokSubdomain.ngrok-free.app';
     
