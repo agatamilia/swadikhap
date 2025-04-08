@@ -117,11 +117,17 @@ def transcribe_audio():
         )
         transcription = result.get("text", "").strip()
         
+        # Remove ### from transcription
+        transcription = transcription.replace('###', '').strip()
+        
         if not transcription:
             return jsonify({"error": "No speech detected"}), 400
 
         # Get AI response
         ai_response = get_deepseek_response(transcription)
+        
+        # Remove ### from AI response if exists
+        ai_response = ai_response.replace('###', '').strip()
             
         session_id = request.form.get('session_id')
         if session_id:
@@ -167,7 +173,6 @@ def transcribe_audio():
     except Exception as e:
         logging.error(f"Transcription error: {str(e)}")
         return jsonify({"error": "Audio processing failed"}), 500
-
 # @app.route('/api/transcribe', methods=['POST'])
 # def transcribe_audio():
 #     if 'audio' not in request.files:
