@@ -36,7 +36,8 @@ class VoiceInputOverlay extends StatelessWidget {
               const _PulsingMic(),
               const SizedBox(height: 24),
               const Text(
-                "Mendengarkan...",
+                // "Mendengarkan...",
+                "Listening...",
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -44,7 +45,8 @@ class VoiceInputOverlay extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               const Text(
-                "Silakan bicara dengan jelas",
+                // "Silakan bicara dengan jelas",
+                "Please speak clearly.",
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.grey,
@@ -60,7 +62,8 @@ class VoiceInputOverlay extends StatelessWidget {
                       backgroundColor: Colors.grey[200],
                       foregroundColor: Colors.black,
                     ),
-                    child: const Text("Batal"),
+                    // child: const Text("Batal"),
+                    child: const Text("cancel"),
                   ),
                   ElevatedButton(
                     onPressed: onFinish,
@@ -68,7 +71,8 @@ class VoiceInputOverlay extends StatelessWidget {
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
                     ),
-                    child: const Text("Selesai"),
+                    // child: const Text("Selesai"),
+                    child: const Text("Done"),
                   ),
                 ],
               ),
@@ -120,7 +124,7 @@ class _PulsingMicState extends State<_PulsingMic> with SingleTickerProviderState
               return Container(
                 width: 80 * _animation.value,
                 height: 80 * _animation.value,
-                decoration: BoxDecoration(
+                decoration: BoxDecoration( 
                   color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
                   shape: BoxShape.circle,
                 ),

@@ -173,102 +173,6 @@ def transcribe_audio():
     except Exception as e:
         logging.error(f"Transcription error: {str(e)}")
         return jsonify({"error": "Audio processing failed"}), 500
-# @app.route('/api/transcribe', methods=['POST'])
-# def transcribe_audio():
-#     if 'audio' not in request.files:
-#         return jsonify({"error": "No audio file provided"}), 400
-
-#     audio_file = request.files['audio']
-#     if audio_file.filename == '':
-#         return jsonify({"error": "Empty filename"}), 400
-
-#     try:
-#         # Create upload directory if needed
-#         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-        
-#         # Generate unique filename
-#         filename = secure_filename(f"audio_{datetime.now().timestamp()}.wav")
-#         filepath = os.path.join(UPLOAD_FOLDER, filename)
-        
-#         # Save file
-#         audio_file.save(filepath)
-        
-#         # Verify file was saved
-#         if not os.path.exists(filepath):
-#             return jsonify({"error": "Failed to save audio file"}), 500
-
-#         # Process with Whisper
-#         result = WHISPER_MODEL.transcribe(filepath, language="id")
-#         transcription = result.get("text", "").strip()
-        
-#         if not transcription:
-#             return jsonify({"error": "No speech detected"}), 400
-
-#         return jsonify({
-#             "status": "success",
-#             "transcription": transcription,
-#             "audio_url": f"/uploads/audio/{filename}"
-#         })
-
-#     except Exception as e:
-#         logging.error(f"Transcription error: {str(e)}")
-#         return jsonify({"error": "Audio processing failed"}), 500
-
-# @app.route('/api/sessions/<session_id>/messages', methods=['POST'])
-# def save_message(session_id):
-#     try:
-#         data = request.json
-#         if not data:
-#             return jsonify({"error": "No data provided"}), 400
-
-#         # Validate required fields
-#         required_fields = ['content', 'role']
-#         if not all(field in data for field in required_fields):
-#             return jsonify({"error": f"Missing required fields: {required_fields}"}), 400
-
-#         # Check if session exists
-#         session = db.session.get(Session, session_id)
-#         if not session:
-#             return jsonify({"error": "Session not found"}), 404
-
-#         # Create message with proper timestamp
-#         message = Message(
-#             id=str(uuid.uuid4()),
-#             session_id=session_id,
-#             content=data['content'],
-#             role=data['role'],
-#             timestamp=int(datetime.now().timestamp() * 1000),
-#             image_path=data.get('image_path'),
-#             audio_path=data.get('audio_path')
-#         )
-
-#         # Update session timestamp
-#         session.updated_at = int(datetime.now().timestamp() * 1000)
-
-#         # Add to database session
-#         db.session.add(message)
-        
-#         # Commit transaction
-#         db.session.commit()
-
-#         return jsonify({
-#             "id": message.id,
-#             "session_id": message.session_id,
-#             "content": message.content,
-#             "role": message.role,
-#             "timestamp": message.timestamp,
-#             "image_path": message.image_path,
-#             "audio_path": message.audio_path
-#         }), 201
-
-#     except Exception as e:
-#         db.session.rollback()
-#         logger.error(f"Error saving message: {str(e)}", exc_info=True)
-#         return jsonify({
-#             "error": "Failed to save message",
-#             "details": str(e)
-#         }), 500   
-
     
 def validate_audio_file(filepath):
     """Validasi format dan durasi audio"""
@@ -404,23 +308,6 @@ def delete_session(session_id):
         logger.error(f"Error deleting session: {e}")
         db.session.rollback()
         return jsonify({"error": "Failed to delete session"}), 500
-
-# Message management endpoints
-# @app.route('/api/sessions/<session_id>/messages', methods=['GET'])
-# def get_messages(session_id):
-#     try:
-#         messages = Message.query.filter_by(session_id=session_id).order_by(Message.timestamp.asc()).all()
-#         return jsonify([{
-#             "id": message.id,
-#             "session_id": message.session_id,
-#             "content": message.content,
-#             "role": message.role,
-#             "timestamp": message.timestamp,
-#             "image_path": message.image_path
-#         } for message in messages])
-#     except Exception as e:
-#         logger.error(f"Error getting messages: {e}")
-#         return jsonify({"error": "Failed to get messages"}), 500
 
 @app.route('/api/sessions/<session_id>/messages', methods=['GET'])
 def get_messages(session_id):
@@ -581,10 +468,11 @@ def chat():
         payload = {
             "model": "deepseek-chat",
             "messages": [
-                {"role": "system", "content": "Anda adalah asisten pertanian PeTaniku. Tolong format jawaban dengan:\n"
-                                            "1. Ganti **teks** dengan *teks* untuk bold\n"
-                                            "2. Hindari penggunaan markdown seperti ### untuk heading\n"
-                                            "3. Gunakan garis baru untuk pemisah bagian"},
+                {"role": "system", "content": "You are the assistant for PeTaniku agriculture. Please format the answers with:\n" "1. Replace text with text for bold\n" "2. Avoid using markdown like ### for headings\n" "3. Use a new line to separate sections"},
+                    # {"role": "system", "content": "Anda adalah asisten pertanian PeTaniku. Tolong format jawaban dengan:\n"
+                    #                             "1. Ganti **teks** dengan *teks* untuk bold\n"
+                    #                             "2. Hindari penggunaan markdown seperti ### untuk heading\n"
+                    #                             "3. Gunakan garis baru untuk pemisah bagian"},
                 {"role": "user", "content": message}
             ],
             "temperature": 0.7,
@@ -799,20 +687,34 @@ def get_openweather_data(lat, lon):
         logger.error(f"OpenWeather API error: {e}")
         return None
 
+# def get_farming_advice(weather_main):
+#     """Get farming advice based on weather condition"""
+#     weather_main = weather_main.lower()
+    
+#     if any(x in weather_main for x in ['clear', 'sun']):
+#         return "Cocok untuk panen atau pengeringan hasil panen"
+#     elif any(x in weather_main for x in ['cloud', 'fog', 'mist', 'haze']):
+#         return "Baik untuk menanam bibit atau penyemprotan pestisida"
+#     elif any(x in weather_main for x in ['rain', 'drizzle', 'shower']):
+#         return "Hindari pemupukan dan penyemprotan pestisida"
+#     elif any(x in weather_main for x in ['thunder', 'storm']):
+#         return "Pastikan drainase lahan baik untuk mencegah genangan"
+#     else:
+#         return "Pantau kondisi tanaman secara berkala"
 def get_farming_advice(weather_main):
     """Get farming advice based on weather condition"""
     weather_main = weather_main.lower()
-    
+
     if any(x in weather_main for x in ['clear', 'sun']):
-        return "Cocok untuk panen atau pengeringan hasil panen"
+        return "Suitable for harvesting or drying crops"
     elif any(x in weather_main for x in ['cloud', 'fog', 'mist', 'haze']):
-        return "Baik untuk menanam bibit atau penyemprotan pestisida"
+        return "Good for planting seedlings or spraying pesticides"
     elif any(x in weather_main for x in ['rain', 'drizzle', 'shower']):
-        return "Hindari pemupukan dan penyemprotan pestisida"
+        return "Avoid fertilizing and spraying pesticides"
     elif any(x in weather_main for x in ['thunder', 'storm']):
-        return "Pastikan drainase lahan baik untuk mencegah genangan"
+        return "Ensure good land drainage to prevent waterlogging"
     else:
-        return "Pantau kondisi tanaman secara berkala"
+        return "Monitor plant conditions regularly"
 
 def get_mock_weather_data():
     """Return mock weather data for testing"""
@@ -835,7 +737,8 @@ def get_deepseek_response(prompt):
         payload = {
             "model": "deepseek-chat",
             "messages": [
-                {"role": "system", "content": "Anda adalah asisten pertanian PeTaniku."},
+                # {"role": "system", "content": "Anda adalah asisten pertanian PeTaniku."},
+                {"role": "system", "content": "You are PeTaniku's farming assistant."},
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.7,

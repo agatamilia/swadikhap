@@ -95,15 +95,18 @@ class ChatProvider with ChangeNotifier {
 
   void _addWelcomeMessage(String sessionId) {
     _messages.add(ChatMessage(
-      content: "Selamat datang di PeTaniku! Saya siap membantu dengan pertanyaan seputar pertanian.",
+      // content: "Selamat datang di PeTaniku! Saya siap membantu dengan pertanyaan seputar pertanian.",
+      content: "Welcome to PeTaniku! I am ready to help with any questions about farming.",
       role: MessageRole.assistant,
     ));
   }
 
   void _addConnectionErrorMessage() {
     _messages.add(ChatMessage(
-      content: "Saya tidak dapat terhubung ke server saat ini. Beberapa fitur mungkin terbatas. "
-               "Pesan Anda akan disimpan secara lokal dan akan disinkronkan ketika koneksi pulih.",
+      // content: "Saya tidak dapat terhubung ke server saat ini. Beberapa fitur mungkin terbatas. "
+      //          "Pesan Anda akan disimpan secara lokal dan akan disinkronkan ketika koneksi pulih.",
+      content: "I can't connect to the server right now. Some features may be limited. "
+      "Your messages will be stored locally and will sync when the connection is restored.",
       role: MessageRole.assistant,
     ));
   }
@@ -240,7 +243,8 @@ class ChatProvider with ChangeNotifier {
     } catch (e) {
       _isListening = false;
       notifyListeners();
-      _showErrorSnackbar(context, 'Gagal memulai rekaman: ${e.toString()}');
+      // _showErrorSnackbar(context, 'Gagal memulai rekaman: ${e.toString()}');
+      _showErrorSnackbar(context, 'Failed to start recording: ${e.toString()}');
     }
   }
 
@@ -266,7 +270,8 @@ class ChatProvider with ChangeNotifier {
       // Add temporary audio message
       final audioMessage = ChatMessage(
         id: 'audio_${DateTime.now().millisecondsSinceEpoch}',
-        content: 'Mengolah pesan suara...',
+        // content: 'Mengolah pesan suara...',
+        content: 'Processing voice messages...',
         role: MessageRole.user,
         isAudio: true,
       );
@@ -287,7 +292,8 @@ class ChatProvider with ChangeNotifier {
       // Add AI response directly since it's already processed by the server
       await _addBotMessage(aiResponse, sessionId);
     } catch (e) {
-      _addBotMessage("Gagal memproses rekaman suara: ${e.toString()}", sessionId);
+      // _addBotMessage("Gagal memproses rekaman suara: ${e.toString()}", sessionId);
+      _addBotMessage("Failed to process voice recording: ${e.toString()}", sessionId);
       print('Error in stopListening: $e');
     } finally {
       _isLoading = false;

@@ -235,14 +235,16 @@ Widget _buildWelcomeScreen() {
           ),
           const SizedBox(height: 16),  // Changed from block-size
           Text(
-            "Selamat datang di PeTaniku!",
+            // "Selamat datang di PeTaniku!",
+            "Welcome to PeTaniku!",
             style: Theme.of(context).textTheme.headlineMedium,
           ),
           const SizedBox(height: 8),  // Changed from block-size
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Text(
-              "Tanyakan tentang teknik bertani, cuaca, atau hama tanaman",
+              // "Tanyakan tentang teknik bertani, cuaca, atau hama tanaman",
+              "Ask about farming techniques, weather, or crop pests",
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Colors.grey[600],
@@ -292,16 +294,20 @@ Widget _buildWelcomeScreen() {
                     context: context,
                     builder: (BuildContext context) {
                       return AlertDialog(
-                        title: const Text('Hapus Pesan'),
-                        content: const Text('Apakah Anda yakin ingin menghapus pesan ini?'),
+                        // title: const Text('Hapus Pesan'),
+                        // content: const Text('Apakah Anda yakin ingin menghapus pesan ini?'),
+                        title: const Text('Delete Message'),
+                        content: const Text('Are you sure you want to delete this message?'),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.of(context).pop(false),
-                            child: const Text('Batal'),
+                            // child: const Text('Batal'),
+                            child: const Text('Cancel'),
                           ),
                           TextButton(
                             onPressed: () => Navigator.of(context).pop(true),
-                            child: const Text('Hapus'),
+                            // child: const Text('Hapus'),
+                            child: const Text('Delete'),
                           ),
                         ],
                       );
@@ -324,7 +330,8 @@ Widget _buildWelcomeScreen() {
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
                     ),
-                    child: const Text("Buka DeepSeek AI"),
+                    // child: const Text("Buka DeepSeek AI"),
+                    child: const Text("Open DeepSeek AI"),
                   ),
                 ),
             ],
@@ -345,16 +352,20 @@ Widget _buildWelcomeScreen() {
               context: context,
               builder: (BuildContext context) {
                 return AlertDialog(
-                  title: const Text('Hapus Pesan'),
-                  content: const Text('Apakah Anda yakin ingin menghapus pesan ini?'),
+                  // title: const Text('Hapus Pesan'),
+                  // content: const Text('Apakah Anda yakin ingin menghapus pesan ini?'),
+                  title: const Text('Delete Message'),
+                  content: const Text('Are you sure you want to delete this message?'),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(false),
-                      child: const Text('Batal'),
+                      // child: const Text('Batal'),
+                      child: const Text('Cancel'),
                     ),
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(true),
-                      child: const Text('Hapus'),
+                      // child: const Text('Hapus'),
+                      child: const Text('Delete'),
                     ),
                   ],
                 );
@@ -411,14 +422,16 @@ Widget _buildWelcomeScreen() {
                   controller: _textController,
                   decoration: InputDecoration(
                     hintText: chatProvider.hasImagePending 
-                        ? "Ketik pertanyaan tentang gambar ini..." 
-                        : "Tanyakan sesuatu tentang pertanian...",
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.image),
-                      onPressed: chatProvider.isLoading 
-                          ? null 
-                          : () => chatProvider.pickImage(context),
-                    ),
+                        // ? "Ketik pertanyaan tentang gambar ini..." 
+                        // : "Tanyakan sesuatu tentang pertanian...",
+                        ? "Type a question about this image..."
+                        : "Ask something about agriculture...",
+                    // suffixIcon: IconButton(
+                    //   icon: const Icon(Icons.image),
+                    //   onPressed: chatProvider.isLoading 
+                    //       ? null 
+                    //       : () => chatProvider.pickImage(context),
+                    // ),
                   ),
                   enabled: !chatProvider.isListening && !chatProvider.isLoading,
                   onSubmitted: (text) => _handleSubmitted(context, text),
