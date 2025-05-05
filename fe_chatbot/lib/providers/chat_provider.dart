@@ -92,21 +92,25 @@ class ChatProvider with ChangeNotifier {
       notifyListeners();
     }
   }
+  void clearPendingImage() {
+    _pendingImage = null;
+    notifyListeners();
+  }
 
   void _addWelcomeMessage(String sessionId) {
     _messages.add(ChatMessage(
-      // content: "Selamat datang di PeTaniku! Saya siap membantu dengan pertanyaan seputar pertanian.",
-      content: "Welcome to PeTaniku! I am ready to help with any questions about farming.",
+      content: "Selamat datang di PeTaniku! Saya siap membantu dengan pertanyaan seputar pertanian.",
+      // content: "Welcome to PeTaniku! I am ready to help with any questions about farming.",
       role: MessageRole.assistant,
     ));
   }
 
   void _addConnectionErrorMessage() {
     _messages.add(ChatMessage(
-      // content: "Saya tidak dapat terhubung ke server saat ini. Beberapa fitur mungkin terbatas. "
-      //          "Pesan Anda akan disimpan secara lokal dan akan disinkronkan ketika koneksi pulih.",
-      content: "I can't connect to the server right now. Some features may be limited. "
-      "Your messages will be stored locally and will sync when the connection is restored.",
+      content: "Saya tidak dapat terhubung ke server saat ini. Beberapa fitur mungkin terbatas. "
+               "Pesan Anda akan disimpan secara lokal dan akan disinkronkan ketika koneksi pulih.",
+      // content: "I can't connect to the server right now. Some features may be limited. "
+      // "Your messages will be stored locally and will sync when the connection is restored.",
       role: MessageRole.assistant,
     ));
   }
@@ -116,6 +120,46 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  void sendTemplateMessage(String text, String sessionId, SessionProvider sessionProvider) {
+    // Tambahkan pesan user
+    final userMessage = ChatMessage(
+      content: text,
+      role: MessageRole.user,
+    );
+    _messages.add(userMessage);
+    notifyListeners();
+
+    // Generate template response
+    String botResponse = _generateTemplateResponse(text);
+    
+    // Tambahkan pesan bot setelah delay kecil
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _messages.add(ChatMessage(
+        content: botResponse,
+        role: MessageRole.assistant,
+      ));
+      notifyListeners();
+    });
+  }
+
+  String _generateTemplateResponse(String userInput) {
+    // Template respons berdasarkan input user
+    if (userInput.toLowerCase().contains("hi") || 
+        userInput.toLowerCase().contains("halo") ||
+        userInput.toLowerCase().contains("saya ingin bertanya")) {
+      return """Halo! Selamat datang di PeTaniku, asisten pertanian Anda. 
+
+Apa yang ingin Anda tanyakan hari ini?""";
+    } else if (userInput.toLowerCase().contains("tanam padi")) {
+      return """Cara menanam padi:
+  1. Siapkan bibit unggul
+  2. Olah lahan dengan baik
+  3. Buat sistem pengairan
+  4. Tanam bibit dengan jarak 25x25 cm""";
+    } else {
+      return "Saya bisa membantu dengan berbagai topik pertanian. Anda bisa bertanya tentang:\n- Teknik penanaman\n- Hama tanaman\n- Pupuk dan perawatan";
+    }
+  }
   Future<void> sendMessage(String text, String sessionId, SessionProvider sessionProvider) async {
     if (text.isEmpty && !hasImagePending) return;
     
@@ -161,29 +205,40 @@ class ChatProvider with ChangeNotifier {
   }
 
   Future<void> _processImage(String sessionId) async {
-    if (_pendingImage == null) return;
+  if (_pendingImage == null) return;
+  
+  _isLoading = true;
+  notifyListeners();
+  
+  try {
+    // Kirim gambar ke API Python via Ngrok
+    final response = await _apiService.analyzeImage(_pendingImage!, sessionId);
     
-    _isLoading = true;
-    notifyListeners();
-    
-    try {
-      // Upload and analyze image
-      final response = await _imageService.uploadAndAnalyzeImage(_pendingImage!, sessionId);
-      
-      // Add bot message with analysis
-      await _addBotMessage(response['analysis'], sessionId);
-      
-      // Clear pending image
-      _pendingImage = null;
-    } catch (e) {
-      print('Error processing image: $e');
-      await _addBotMessage('Error analyzing image: ${e.toString()}', sessionId);
-      _pendingImage = null;
-    } finally {
-      _isLoading = false;
+    // Update pesan user dengan path gambar
+    if (_messages.isNotEmpty && _messages.last.role == MessageRole.user) {
+      final lastIndex = _messages.length - 1;
+      _messages[lastIndex] = _messages[lastIndex].copyWith(
+        imageUrl: response['image_path'],
+      );
       notifyListeners();
     }
+    
+    // Tambahkan respon analisis dari server
+    await _addBotMessage(response['analysis'], sessionId);
+    
+    _pendingImage = null;
+  } catch (e) {
+    debugPrint('Error processing image: $e');
+    await _addBotMessage(
+      'Gagal menganalisis gambar. Silakan coba lagi.',
+      sessionId,
+    );
+    _pendingImage = null;
+  } finally {
+    _isLoading = false;
+    notifyListeners();
   }
+}
 
   String _getErrorMessage(dynamic error) {
     return "Terjadi kesalahan tak terduga. Silakan coba lagi.";

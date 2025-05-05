@@ -46,7 +46,8 @@ MIN_AUDIO_DURATION = 0.5  # seconds
 # Create upload folder for images
 UPLOAD_IMAGE_FOLDER = 'uploads/images'
 os.makedirs(UPLOAD_IMAGE_FOLDER, exist_ok=True)
-
+app.config['UPLOAD_IMAGE_FOLDER'] = UPLOAD_IMAGE_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 # Database Models
 class Session(db.Model):
     __tablename__ = 'sessions'
@@ -130,38 +131,16 @@ def transcribe_audio():
         ai_response = ai_response.replace('###', '').strip()
             
         session_id = request.form.get('session_id')
-        if session_id:
-            try:
-                current_time = int(datetime.now().timestamp() * 1000)
-                
-                # Save user audio message
-                user_message = Message(
-                    id=str(uuid.uuid4()),
-                    session_id=session_id,
-                    content=transcription,
-                    role='user',
-                    timestamp=current_time,
-                    audio_path=f"/uploads/audio/{filename}"
-                )
-                
-                # Save assistant response
-                assistant_message = Message(
-                    id=str(uuid.uuid4()),
-                    session_id=session_id,
-                    content=ai_response,
-                    role='assistant',
-                    timestamp=current_time + 1
-                )
-                
-                # Update session
-                session = db.session.get(Session, session_id)
-                if session:
-                    session.updated_at = current_time
-                    db.session.add_all([user_message, assistant_message])
-                    db.session.commit()
-            except Exception as e:
-                logger.error(f"Error saving transcribed messages: {e}")
-                db.session.rollback()
+        if not session_id:
+            new_session = Session(
+                id=str(uuid.uuid4()),
+                name="Percakapan Audio",
+                created_at=int(datetime.now().timestamp() * 1000),
+                updated_at=int(datetime.now().timestamp() * 1000)
+            )
+            db.session.add(new_session)
+            db.session.commit()
+            session_id = new_session.id
 
         return jsonify({
             "status": "success",
@@ -312,9 +291,7 @@ def delete_session(session_id):
 @app.route('/api/sessions/<session_id>/messages', methods=['GET'])
 def get_messages(session_id):
     try:
-        messages = Message.query.filter_by(session_id=session_id)\
-                              .order_by(Message.timestamp.asc())\
-                              .all()
+        messages = Message.query.filter_by(session_id=session_id).order_by(Message.timestamp.asc()).all()
         
         return jsonify([{
             "id": msg.id,
@@ -460,6 +437,18 @@ def chat():
         if not message:
             return jsonify({"error": "Message is required"}), 400
         
+        if not session_id:
+            new_session = Session(
+                id=str(uuid.uuid4()),
+                name="Percakapan Baru",  # Default name
+                created_at=int(datetime.now().timestamp() * 1000),
+                updated_at=int(datetime.now().timestamp() * 1000)
+            )
+            db.session.add(new_session)
+            db.session.commit()
+            session_id = new_session.id
+        
+
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
             "Content-Type": "application/json"
@@ -468,11 +457,24 @@ def chat():
         payload = {
             "model": "deepseek-chat",
             "messages": [
-                {"role": "system", "content": "You are the assistant for PeTaniku agriculture. Please format the answers with:\n" "1. Replace text with text for bold\n" "2. Avoid using markdown like ### for headings\n" "3. Use a new line to separate sections"},
-                    # {"role": "system", "content": "Anda adalah asisten pertanian PeTaniku. Tolong format jawaban dengan:\n"
-                    #                             "1. Ganti **teks** dengan *teks* untuk bold\n"
-                    #                             "2. Hindari penggunaan markdown seperti ### untuk heading\n"
-                    #                             "3. Gunakan garis baru untuk pemisah bagian"},
+                {
+                    "role": "system", 
+                    "content": """Anda adalah Asisten Pertanian PeTaniku yang ahli di bidang:
+- Pertanian dan perkebunan
+- Cuaca dan iklim untuk pertanian
+- Pengelolaan tanaman dan tanah
+- Teknologi pertanian
+
+Bantu pengguna dengan:
+1. Berikan jawaban mendetail untuk pertanyaan pertanian
+2. Jika pertanyaan di luar topik, jawab dengan sopan:
+   "Maaf, saya hanya dapat membantu tentang pertanian. Ada yang bisa saya bantu terkait tanaman, cuaca pertanian, atau hal terkait?"
+
+Gaya respons:
+- Gunakan bahasa sederhana dan praktis
+- Format jelas dengan paragraf terpisah
+- Hindari jargon teknis berlebihan"""
+                },
                 {"role": "user", "content": message}
             ],
             "temperature": 0.7,
@@ -490,59 +492,64 @@ def chat():
         if response.status_code == 200:
             assistant_message = result['choices'][0]['message']['content']
             
-            # Remove markdown headings and ensure proper bold formatting
-            formatted_message = assistant_message.replace('###', '').replace('**', '*')
+            # Deteksi apakah respon mengandung penolakan (indikasi pertanyaan non-pertanian)
+            is_farming_related = not any(phrase in assistant_message.lower() for phrase in [
+                "maaf saya hanya dapat membantu",
+                "di luar topik saya",
+                "tidak bisa membantu"
+            ])
             
-            # Create a clean version for TTS (without formatting markers)
+            formatted_message = assistant_message.replace('###', '').replace('**', '*')
             clean_tts_message = formatted_message.replace('*', '')
             
-            if session_id:
-                try:
-                    session = db.session.get(Session, session_id)
-                    if not session:
-                        return jsonify({"error": "Session not found"}), 404
-                    
-                    current_time = int(datetime.now().timestamp() * 1000)
-                    
-                    # Save user message
-                    user_message = Message(
-                        id=str(uuid.uuid4()),
-                        session_id=session_id,
-                        content=message,
-                        role='user',
-                        timestamp=current_time
-                    )
-                    
-                    # Save assistant message
-                    assistant_message = Message(
-                        id=str(uuid.uuid4()),
-                        session_id=session_id,
-                        content=formatted_message,
-                        role='assistant',
-                        timestamp=current_time + 1  # Ensure ordering
-                    )
-                    
-                    # Update session timestamp
-                    session.updated_at = current_time
-                    
-                    db.session.add_all([user_message, assistant_message])
-                    db.session.commit()
-                except Exception as e:
-                    logger.error(f"Error saving messages to database: {e}")
-                    db.session.rollback()
+            # Pastikan session masih ada
+            session = db.session.get(Session, session_id)
+            if not session:
+                # Jika session hilang, buat baru
+                new_session = Session(
+                    id=str(uuid.uuid4()),
+                    name="Percakapan Baru",
+                    created_at=int(datetime.now().timestamp() * 1000),
+                    updated_at=int(datetime.now().timestamp() * 1000)
+                )
+                db.session.add(new_session)
+                db.session.commit()
+                session_id = new_session.id
+                session = new_session
+            
+            current_time = int(datetime.now().timestamp() * 1000)
+            
+            user_message = Message(
+                id=str(uuid.uuid4()),
+                session_id=session_id,
+                content=message,
+                role='user',
+                timestamp=current_time
+            )
+            
+            assistant_message = Message(
+                id=str(uuid.uuid4()),
+                session_id=session_id,
+                content=formatted_message,
+                role='assistant',
+                timestamp=current_time + 1
+            )
+            
+            session.updated_at = current_time
+            db.session.add_all([user_message, assistant_message])
+            db.session.commit()
             
             return jsonify({
                 "response": formatted_message,
                 "clean_tts_message": clean_tts_message,
-                "is_farming_related": True
+                "is_farming_related": is_farming_related,
+                "session_id": session_id  # Kirim session_id ke frontend
             })
-        else:
-            logger.error(f"DeepSeek API error: {result}")
-            return jsonify({"error": "Failed to get response from AI", "details": result}), response.status_code
             
     except Exception as e:
-        logger.error(f"Chat API error: {e}")
-        return jsonify({"error": "An error occurred while processing your message"}), 500
+        logger.error(f"Chat error: {e}")
+        db.session.rollback()
+        return jsonify({"error": "Terjadi kesalahan"}), 500
 
 @app.route('/uploads/audio/<filename>')
 def serve_audio(filename):
@@ -568,17 +575,24 @@ def upload_image():
         return jsonify({"error": "Empty filename"}), 400
         
     try:
-        # Save file
-        filename = secure_filename(f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}{os.path.splitext(image_file.filename)[1]}")
+        # Validasi ekstensi file
+        allowed_extensions = {'png', 'jpg', 'jpeg', 'gif'}
+        if '.' not in image_file.filename or image_file.filename.split('.')[-1].lower() not in allowed_extensions:
+            return jsonify({"error": "Invalid file type. Only PNG, JPG, JPEG, GIF are allowed"}), 400
+
+        # Simpan file
+        filename = secure_filename(f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}.{image_file.filename.split('.')[-1].lower()}")
         filepath = os.path.join(UPLOAD_IMAGE_FOLDER, filename)
         image_file.save(filepath)
         
-        # Process with DeepSeek
-        # Read image and convert to base64
+        # Baca gambar dan konversi ke base64
         with open(filepath, "rb") as img_file:
             img_base64 = base64.b64encode(img_file.read()).decode("utf-8")
         
-        # Send to DeepSeek API with image
+        # Dapatkan prompt dari form atau gunakan default
+        user_prompt = request.form.get('prompt', 'Analisis gambar tanaman ini. Identifikasi tanaman, kondisi kesehatan, dan berikan saran perawatan jika diperlukan.')
+        
+        # Siapkan payload untuk DeepSeek Vision
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
             "Content-Type": "application/json"
@@ -587,19 +601,23 @@ def upload_image():
         payload = {
             "model": "deepseek-vision",
             "messages": [
-                {"role": "system", "content": "Anda adalah asisten pertanian PeTaniku. Analisis gambar pertanian ini dan berikan informasi yang relevan."},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "Analisis gambar tanaman ini. Apa jenisnya? Apakah ada hama atau penyakit? Berikan saran perawatan."},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}}
-                ]}
+                {
+                    "role": "system",
+                    "content": "Anda adalah asisten pertanian PeTaniku yang ahli dalam analisis gambar tanaman. Berikan analisis mendetail tentang gambar yang diberikan."
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": user_prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}}
+                    ]
+                }
             ],
             "temperature": 0.7,
-            "max_tokens": 1000
+            "max_tokens": 2000
         }
         
-        session_id = request.form.get('session_id')
-        
-        # Call DeepSeek API
+        # Kirim ke API DeepSeek
         response = requests.post(
             "https://api.deepseek.com/v1/chat/completions",
             headers=headers,
@@ -608,29 +626,30 @@ def upload_image():
         
         if response.status_code != 200:
             logger.error(f"DeepSeek API error: {response.text}")
-            return jsonify({"error": "Failed to analyze image"}), 500
+            return jsonify({"error": "Failed to analyze image", "api_error": response.text}), 500
             
         result = response.json()
         analysis = result['choices'][0]['message']['content']
         
-        # Save in database if session_id provided
+        # Simpan ke database jika ada session_id
+        session_id = request.form.get('session_id')
         if session_id:
             try:
                 session = db.session.get(Session, session_id)
                 if session:
                     current_time = int(datetime.now().timestamp() * 1000)
                     
-                    # Save image message with relative path
+                    # Simpan pesan gambar
                     image_message = Message(
                         id=str(uuid.uuid4()),
                         session_id=session_id,
-                        content="(Gambar pertanian)",
+                        content=f"(Gambar pertanian) {user_prompt}",
                         role='user',
                         timestamp=current_time,
                         image_path=f"/uploads/images/{filename}"
                     )
                     
-                    # Save analysis response
+                    # Simpan analisis
                     analysis_message = Message(
                         id=str(uuid.uuid4()),
                         session_id=session_id,
@@ -639,25 +658,101 @@ def upload_image():
                         timestamp=current_time + 1
                     )
                     
-                    # Update session timestamp
+                    # Update session
                     session.updated_at = current_time
                     
                     db.session.add_all([image_message, analysis_message])
                     db.session.commit()
             except Exception as e:
-                logger.error(f"Error saving image analysis to database: {e}")
+                logger.error(f"Error saving to database: {e}")
                 db.session.rollback()
         
         return jsonify({
             "status": "success",
             "analysis": analysis,
-            "image_path": f"/uploads/images/{filename}"
+            "image_path": f"/uploads/images/{filename}",
+            "session_id": session_id
         })
         
     except Exception as e:
         logger.error(f"Image processing error: {str(e)}")
         return jsonify({"error": "Image processing failed"}), 500
+@app.route('/api/vision', methods=['POST'])
+def analyze_image():
+    if 'image' not in request.files:
+        return jsonify({"error": "No image file provided"}), 400
 
+    try:
+        # Save uploaded file
+        image_file = request.files['image']
+        session_id = request.form.get('session_id', '')
+        
+        filename = secure_filename(f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}.jpg")
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        image_file.save(filepath)
+        
+        # Read image as base64
+        with open(filepath, "rb") as img_file:
+            img_base64 = base64.b64encode(img_file.read()).decode("utf-8")
+        
+        # Prepare analysis prompt
+        prompt = """
+        Anda adalah ahli pertanian PeTaniku. Analisis gambar ini secara detail:
+        1. Identifikasi tanaman (jenis, varietas jika memungkinkan)
+        2. Kondisi kesehatan (daun, batang, buah/bunga)
+        3. Gejala penyakit/hama (bercak, perubahan warna, dll)
+        4. Rekomendasi perawatan spesifik
+        
+        Format respon:
+        - **Identifikasi**: [jenis tanaman]
+        - **Kondisi**: [deskripsi]
+        - **Masalah**: [jika ada]
+        - **Rekomendasi**: [langkah perawatan]
+        """
+        
+        # Call DeepSeek Vision API
+        headers = {
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "deepseek-vision",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": f"data:image/jpeg;base64,{img_base64}"}
+                    ]
+                }
+            ],
+            "temperature": 0.7,
+            "max_tokens": 2000
+        }
+        
+        response = requests.post(
+            "https://api.deepseek.com/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30  # 30 seconds timeout
+        )
+        
+        response.raise_for_status()  # Will raise for 4XX/5XX status
+        result = response.json()
+        
+        return jsonify({
+            "status": "success",
+            "analysis": result['choices'][0]['message']['content'],
+            "image_path": f"/uploads/images/{filename}"
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Image analysis error: {str(e)}")
+        return jsonify({
+            "error": "Gagal menganalisis gambar",
+            "details": str(e)
+        }), 500
 # Serve uploaded images
 @app.route('/uploads/images/<filename>')
 def serve_image(filename):
@@ -687,34 +782,34 @@ def get_openweather_data(lat, lon):
         logger.error(f"OpenWeather API error: {e}")
         return None
 
-# def get_farming_advice(weather_main):
-#     """Get farming advice based on weather condition"""
-#     weather_main = weather_main.lower()
-    
-#     if any(x in weather_main for x in ['clear', 'sun']):
-#         return "Cocok untuk panen atau pengeringan hasil panen"
-#     elif any(x in weather_main for x in ['cloud', 'fog', 'mist', 'haze']):
-#         return "Baik untuk menanam bibit atau penyemprotan pestisida"
-#     elif any(x in weather_main for x in ['rain', 'drizzle', 'shower']):
-#         return "Hindari pemupukan dan penyemprotan pestisida"
-#     elif any(x in weather_main for x in ['thunder', 'storm']):
-#         return "Pastikan drainase lahan baik untuk mencegah genangan"
-#     else:
-#         return "Pantau kondisi tanaman secara berkala"
 def get_farming_advice(weather_main):
     """Get farming advice based on weather condition"""
     weather_main = weather_main.lower()
-
+    
     if any(x in weather_main for x in ['clear', 'sun']):
-        return "Suitable for harvesting or drying crops"
+        return "Cocok untuk panen atau pengeringan hasil panen"
     elif any(x in weather_main for x in ['cloud', 'fog', 'mist', 'haze']):
-        return "Good for planting seedlings or spraying pesticides"
+        return "Baik untuk menanam bibit atau penyemprotan pestisida"
     elif any(x in weather_main for x in ['rain', 'drizzle', 'shower']):
-        return "Avoid fertilizing and spraying pesticides"
+        return "Hindari pemupukan dan penyemprotan pestisida"
     elif any(x in weather_main for x in ['thunder', 'storm']):
-        return "Ensure good land drainage to prevent waterlogging"
+        return "Pastikan drainase lahan baik untuk mencegah genangan"
     else:
-        return "Monitor plant conditions regularly"
+        return "Pantau kondisi tanaman secara berkala"
+# def get_farming_advice(weather_main):
+#     """Get farming advice based on weather condition"""
+#     weather_main = weather_main.lower()
+
+#     if any(x in weather_main for x in ['clear', 'sun']):
+#         return "Suitable for harvesting or drying crops"
+#     elif any(x in weather_main for x in ['cloud', 'fog', 'mist', 'haze']):
+#         return "Good for planting seedlings or spraying pesticides"
+#     elif any(x in weather_main for x in ['rain', 'drizzle', 'shower']):
+#         return "Avoid fertilizing and spraying pesticides"
+#     elif any(x in weather_main for x in ['thunder', 'storm']):
+#         return "Ensure good land drainage to prevent waterlogging"
+#     else:
+#         return "Monitor plant conditions regularly"
 
 def get_mock_weather_data():
     """Return mock weather data for testing"""
@@ -742,7 +837,8 @@ def get_deepseek_response(prompt):
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.7,
-            "max_tokens": 1000
+            "max_tokens": 500
+            # "max_tokens": 1000
         }
         
         response = requests.post(

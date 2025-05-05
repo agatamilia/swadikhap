@@ -52,6 +52,7 @@ dependencies:
   mime_type: ^1.0.0
   audioplayers: ^6.4.0
   record: ^4.1.0
+  video_player: ^2.8.0
 
 dev_dependencies:
   flutter_test:

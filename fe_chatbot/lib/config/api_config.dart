@@ -8,7 +8,7 @@ class ApiConfig {
   
 
   // Ngrok configuration (only used when useNgrok is true)
-  static const String ngrokSubdomain = '4492-103-233-100-203'; // Replace with your ngrok subdomain
+  static const String ngrokSubdomain = '7a2c-125-164-21-104'; // Replace with your ngrok subdomain
   static const String ngrokRegion = 'in'; // Region code (us, eu, ap, au, sa, jp, in)
 
   // Server URLs
@@ -45,8 +45,7 @@ class ApiConfig {
   static String get chatEndpoint => _buildUrl('/api/chat');
   static String get transcribeEndpoint => _buildUrl('/api/transcribe');
   static String get uploadEndpoint => _buildUrl('/api/upload');
-  static String get healthEndpoint => _buildUrl('/api/health');
-
+  static String get visionEndpoint => '/api/vision';
   // Request Headers
   static Map<String, String> get headers => {
     'Content-Type': 'application/json',

@@ -26,7 +26,6 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    // Check permissions after the widget is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkPermissions();
       _loadSessionMessages();
@@ -44,8 +43,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _checkPermissions() async {
     if (_permissionsChecked) return;
-    
-    // Check location permission for weather widget
+
     bool hasLocationPermission = await PermissionService.hasLocationPermission();
     if (!hasLocationPermission && mounted) {
       bool granted = await PermissionService.requestLocationPermission();
@@ -54,7 +52,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
     
-    // Check microphone permission for voice input
     bool hasMicrophonePermission = await PermissionService.hasMicrophonePermission();
     if (!hasMicrophonePermission && mounted) {
       bool granted = await PermissionService.requestMicrophonePermission();
@@ -63,7 +60,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
     
-    // Check storage permission for audio files
     bool hasStoragePermission = await PermissionService.hasStoragePermission();
     if (!hasStoragePermission && mounted) {
       bool granted = await PermissionService.requestStoragePermission();
@@ -99,12 +95,14 @@ class _ChatScreenState extends State<ChatScreen> {
     
     _textController.clear();
     
-    // Send message using provider
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     final sessionProvider = Provider.of<SessionProvider>(context, listen: false);
     
     if (sessionProvider.currentSession != null) {
-      chatProvider.sendMessage(text, sessionProvider.currentSession!.id, sessionProvider);
+      // chatProvider.sendMessage(text, sessionProvider.currentSession!.id, sessionProvider);
+      
+      // Dengan ini untuk template lokal:
+      chatProvider.sendTemplateMessage(text, sessionProvider.currentSession!.id, sessionProvider);
     }
     
     _scrollToBottom();
@@ -148,7 +146,9 @@ class _ChatScreenState extends State<ChatScreen> {
               chatProvider.toggleVoiceOutput();
             },
             activeColor: Colors.white,
-            activeTrackColor: Colors.green[300],
+            activeTrackColor: Colors.green[300]!,
+            inactiveThumbColor: Colors.green[100]!,
+            inactiveTrackColor: Colors.green[200]!,
           ),
         ],
       ),
@@ -161,14 +161,20 @@ class _ChatScreenState extends State<ChatScreen> {
     
     return Consumer<ChatProvider>(
       builder: (context, chatProvider, child) {
-        // Scroll to bottom when new messages arrive
         if (chatProvider.messages.isNotEmpty) {
           _scrollToBottom();
         }
         
         return Scaffold(
+          resizeToAvoidBottomInset: true,
+          backgroundColor: Colors.white,
           appBar: AppBar(
-            title: Text(sessionProvider.currentSession?.name ?? 'PeTaniku'),
+            title: Text(
+              sessionProvider.currentSession?.name ?? 'PeTaniku',
+              style: const TextStyle(color: Colors.white),
+            ),
+            backgroundColor: Colors.green[700],
+            iconTheme: const IconThemeData(color: Colors.white),
             actions: [
               IconButton(
                 icon: const Icon(Icons.history),
@@ -182,22 +188,18 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               Column(
                 children: [
-                  // Weather widget
-                  const WeatherWidget(),
-                  
-                  // Chat messages
+                  WeatherWidget(
+                    backgroundColor: Colors.green[600]!,
+                    textColor: Colors.white,
+                  ),
                   Expanded(
                     child: chatProvider.messages.isEmpty
                         ? _buildWelcomeScreen()
                         : _buildChatList(chatProvider, sessionProvider),
                   ),
-                  
-                  // Input area
                   _buildInputArea(chatProvider, sessionProvider),
                 ],
               ),
-              
-              // Voice input overlay
               if (chatProvider.isListening) 
                 VoiceInputOverlay(
                   onCancel: () => chatProvider.cancelListening(),
@@ -206,6 +208,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       chatProvider.stopListening(sessionProvider.currentSession!.id, sessionProvider);
                     }
                   },
+                  backgroundColor: Colors.green[600]!,
                 ),
             ],
           ),
@@ -214,44 +217,118 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-Widget _buildWelcomeScreen() {
+  Widget _buildWelcomeScreen() {
     return Center(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 100,  // Changed from inline-size
-            height: 100, // Changed from block-size
+            width: 120,
+            height: 120,
             decoration: BoxDecoration(
-              color: Colors.green[100],
+              color: Colors.green[200],
               shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.green.withOpacity(0.3),
+                  blurRadius: 10,
+                  spreadRadius: 2,
+                ),
+              ],
             ),
             child: const Center(
               child: Text(
                 "🌾",
-                style: TextStyle(fontSize: 48),
+                style: TextStyle(fontSize: 60),
               ),
             ),
           ),
-          const SizedBox(height: 16),  // Changed from block-size
+          const SizedBox(height: 24),
           Text(
-            // "Selamat datang di PeTaniku!",
             "Welcome to PeTaniku!",
-            style: Theme.of(context).textTheme.headlineMedium,
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              color: Colors.green[800],
+              fontWeight: FontWeight.bold,
+            ),
           ),
-          const SizedBox(height: 8),  // Changed from block-size
+          const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Text(
-              // "Tanyakan tentang teknik bertani, cuaca, atau hama tanaman",
-              "Ask about farming techniques, weather, or crop pests",
+              "Tanyakan tentang teknik bertani, cuaca, atau hama tanaman",
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[600],
+                color: Colors.green[700],
               ),
             ),
           ),
+          const SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: () {
+              _textController.text = "Hi, saya ingin bertanya";
+              _handleSubmitted(context, _textController.text);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[600],
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+            child: const Text(
+              "Mulai Bertanya",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+  // Animasi titik-titik loading
+  Widget _buildTypingIndicator() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          "Asisten sedang mengetik",
+          style: TextStyle(
+            color: Colors.grey[600],
+            fontSize: 14,
+          ),
+        ),
+        const SizedBox(width: 8),
+        _buildLoadingDots(),
+      ],
+    );
+  }
+
+  // Widget animasi titik loading
+  Widget _buildLoadingDots() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildDot(delay: 0),
+        const SizedBox(width: 4),
+        _buildDot(delay: 200),
+        const SizedBox(width: 4),
+        _buildDot(delay: 400),
+      ],
+    );
+  }
+
+  // Komponen dot animasi
+  Widget _buildDot({required int delay}) {
+    return AnimatedOpacity(
+      opacity: 0.0,
+      duration: const Duration(milliseconds: 800),
+      curve: Curves.easeInOut,
+      child: Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(
+          color: Colors.green[600],
+          shape: BoxShape.circle,
+        ),
       ),
     );
   }
@@ -269,80 +346,19 @@ Widget _buildWelcomeScreen() {
               role: MessageRole.assistant,
             ),
             isTyping: true,
+            userColor: Colors.green[600]!,
+            assistantColor: Colors.green[100]!,
+            textColor: Colors.white,
           );
         }
         
         final message = chatProvider.messages[index];
         
-        // Check if this is a non-farming related response with DeepSeek link
-        if (message.role == MessageRole.assistant && 
-            message.content.contains("https://deepseek.ai")) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Dismissible(
-                key: Key(message.id),
-                direction: DismissDirection.endToStart,
-                background: Container(
-                  color: Colors.red,
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.only(right: 16),
-                  child: const Icon(Icons.delete, color: Colors.white),
-                ),
-                confirmDismiss: (direction) async {
-                  return await showDialog(
-                    context: context,
-                    builder: (BuildContext context) {
-                      return AlertDialog(
-                        // title: const Text('Hapus Pesan'),
-                        // content: const Text('Apakah Anda yakin ingin menghapus pesan ini?'),
-                        title: const Text('Delete Message'),
-                        content: const Text('Are you sure you want to delete this message?'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            // child: const Text('Batal'),
-                            child: const Text('Cancel'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            // child: const Text('Hapus'),
-                            child: const Text('Delete'),
-                          ),
-                        ],
-                      );
-                    },
-                  );
-                },
-                onDismissed: (direction) {
-                  if (sessionProvider.currentSession != null) {
-                    chatProvider.deleteMessage(message.id, sessionProvider.currentSession!.id);
-                  }
-                },
-                child: ChatMessageItem(message: message),
-              ),
-              if (message.content.contains("https://deepseek.ai"))
-                Padding(
-                  padding: const EdgeInsets.only(left: 56, top: 8),
-                  child: ElevatedButton(
-                    onPressed: _openDeepSeekAI,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                    ),
-                    // child: const Text("Buka DeepSeek AI"),
-                    child: const Text("Open DeepSeek AI"),
-                  ),
-                ),
-            ],
-          );
-        }
-        
         return Dismissible(
           key: Key(message.id),
           direction: DismissDirection.endToStart,
           background: Container(
-            color: Colors.red,
+            color:  Color(0xFFB71C1C),
             alignment: Alignment.centerRight,
             padding: const EdgeInsets.only(right: 16),
             child: const Icon(Icons.delete, color: Colors.white),
@@ -352,20 +368,28 @@ Widget _buildWelcomeScreen() {
               context: context,
               builder: (BuildContext context) {
                 return AlertDialog(
-                  // title: const Text('Hapus Pesan'),
-                  // content: const Text('Apakah Anda yakin ingin menghapus pesan ini?'),
-                  title: const Text('Delete Message'),
-                  content: const Text('Are you sure you want to delete this message?'),
+                  title: Text(
+                    'Hapus Pesan',
+                    style: TextStyle(color: Colors.green[800]),
+                  ),
+                  content: Text(
+                    'Apakah Anda yakin ingin menghapus pesan ini?',
+                    style: TextStyle(color: Colors.green[700]),
+                  ),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(false),
-                      // child: const Text('Batal'),
-                      child: const Text('Cancel'),
+                      child: Text(
+                        'Batal',
+                        style: TextStyle(color: Colors.green[700]),
+                      ),
                     ),
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(true),
-                      // child: const Text('Hapus'),
-                      child: const Text('Delete'),
+                      child: Text(
+                        'Hapus',
+                        style: TextStyle(color: Colors.green[700]),
+                      ),
                     ),
                   ],
                 );
@@ -377,7 +401,14 @@ Widget _buildWelcomeScreen() {
               chatProvider.deleteMessage(message.id, sessionProvider.currentSession!.id);
             }
           },
-          child: ChatMessageItem(message: message),
+          child: ChatMessageItem(
+            message: message,
+            userColor: message.role == MessageRole.user 
+                ? Colors.green[600]! 
+                : Colors.green[100]!,
+            assistantColor: Colors.green[100]!,
+            textColor: Colors.black87,
+          ),
         );
       },
     );
@@ -387,7 +418,7 @@ Widget _buildWelcomeScreen() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.green[50],
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -408,54 +439,73 @@ Widget _buildWelcomeScreen() {
                         : () => chatProvider.startListening(context),
                 mini: true,
                 backgroundColor: chatProvider.isListening 
-                    ? Colors.red 
-                    : Theme.of(context).colorScheme.primary,
+                    ? Colors.green[800]
+                    : Colors.green[600],
                 child: Icon(
                   chatProvider.isListening ? Icons.mic_off : Icons.mic,
                   color: Colors.white,
+                  size: 24,
                 ),
               ),
-              const SizedBox(width: 8),  // Changed from inline-size
+              const SizedBox(width: 12),  
               
               Expanded(
-                child: TextField(
-                  controller: _textController,
-                  decoration: InputDecoration(
-                    hintText: chatProvider.hasImagePending 
-                        // ? "Ketik pertanyaan tentang gambar ini..." 
-                        // : "Tanyakan sesuatu tentang pertanian...",
-                        ? "Type a question about this image..."
-                        : "Ask something about agriculture...",
-                    // suffixIcon: IconButton(
-                    //   icon: const Icon(Icons.image),
-                    //   onPressed: chatProvider.isLoading 
-                    //       ? null 
-                    //       : () => chatProvider.pickImage(context),
-                    // ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.green.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-                  enabled: !chatProvider.isListening && !chatProvider.isLoading,
-                  onSubmitted: (text) => _handleSubmitted(context, text),
+                  child: TextField(
+                    controller: _textController,
+                    decoration: InputDecoration(
+                      hintText: chatProvider.hasImagePending 
+                          ? "Ketik pertanyaan tentang gambar ini..."
+                          : "Tanyakan sesuatu tentang pertanian...",
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                      suffixIcon: chatProvider.hasImagePending
+                          ? IconButton(
+                              icon: const Icon(Icons.close, color: Colors.green),
+                              onPressed: chatProvider.clearPendingImage,
+                            )
+                          : null,
+                    ),
+                    style: TextStyle(color: Colors.green[800]),
+                    enabled: !chatProvider.isListening && !chatProvider.isLoading,
+                    onSubmitted: (text) => _handleSubmitted(context, text),
+                  ),
                 ),
               ),
-              const SizedBox(width: 8),  // Changed from inline-size
+              const SizedBox(width: 12),  
               
               FloatingActionButton(
                 onPressed: chatProvider.isLoading 
                     ? null 
                     : () => _handleSubmitted(context, _textController.text),
                 mini: true,
-                backgroundColor: Theme.of(context).colorScheme.primary,
+                backgroundColor: Colors.green[600],
                 child: const Icon(
                   Icons.send,
                   color: Colors.white,
+                  size: 24,
                 ),
               ),
             ],
           ),
           
-          const SizedBox(height: 12),  // Changed from block-size
+          const SizedBox(height: 12),
           SuggestionChips(
             onSuggestionSelected: _onSuggestionSelected,
+            chipColor: Colors.green[100]!,
+            textColor: Colors.green[800]!,
           ),
         ],
       ),

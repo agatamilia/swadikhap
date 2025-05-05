@@ -1,108 +1,52 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as path;
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 
 class ImageService {
-  final ImagePicker _imagePicker = ImagePicker();
-
-  // Pick an image from gallery
-  Future<File?> pickImage({
-    ImageSource source = ImageSource.gallery,
-    double maxWidth = 1800,
-    double maxHeight = 1800,
-  }) async {
+  Future<Map<String, dynamic>> uploadAndAnalyzeImage(
+    File imageFile, 
+    String sessionId,
+    String? userPrompt,
+  ) async {
     try {
-      final pickedFile = await _imagePicker.pickImage(
-        source: source,
-        maxWidth: maxWidth,
-        maxHeight: maxHeight,
-        imageQuality: 80, // Compress to reduce file size
-      );
-      
-      if (pickedFile == null) return null;
-      
-      // Save to app directory
-      final appDir = await getApplicationDocumentsDirectory();
-      final fileName = path.basename(pickedFile.path);
-      final savedImage = await File(pickedFile.path).copy('${appDir.path}/$fileName');
-      
-      debugPrint('Image saved to: ${savedImage.path}');
-      return savedImage;
-    } catch (e) {
-      debugPrint('Error picking image: $e');
-      return null;
-    }
-  }
+      // Baca file gambar sebagai bytes
+      final imageBytes = await imageFile.readAsBytes();
+      final base64Image = base64Encode(imageBytes);
 
-  // Upload image to server and get analysis
-  Future<Map<String, dynamic>> uploadAndAnalyzeImage(File imageFile, String sessionId) async {
-    try {
-      // Create multipart request
-      final uri = Uri.parse('${ApiConfig.baseUrl}/api/upload');
+      // Buat request multipart
+      final uri = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.uploadEndpoint}');
       final request = http.MultipartRequest('POST', uri);
-      
-      // Add headers
+
+      // Tambahkan headers
       request.headers.addAll(ApiConfig.headers);
-      
-      // Add session ID
-      request.fields['session_id'] = sessionId;
-      
-      // Add file
-      final fileStream = http.ByteStream(imageFile.openRead());
-      final fileLength = await imageFile.length();
-      final multipartFile = http.MultipartFile(
+
+      // Tambahkan file gambar
+      request.files.add(http.MultipartFile.fromBytes(
         'image',
-        fileStream,
-        fileLength,
-        filename: path.basename(imageFile.path),
-        contentType: _getImageContentType(imageFile.path),
-      );
-      request.files.add(multipartFile);
-      
-      // Send request
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-      
+        imageBytes,
+        filename: 'plant_image_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+
+      // Tambahkan field lainnya
+      request.fields['session_id'] = sessionId;
+      if (userPrompt != null) {
+        request.fields['prompt'] = userPrompt;
+      }
+
+      // Kirim request
+      final response = await request.send();
+      final responseBody = await response.stream.bytesToString();
+
       if (response.statusCode == 200) {
-        return json.decode(response.body);
+        return jsonDecode(responseBody);
       } else {
-        throw Exception('Failed to upload image: ${response.statusCode} ${response.body}');
+        throw Exception('Failed to upload image: ${response.statusCode} $responseBody');
       }
     } catch (e) {
-      debugPrint('Error uploading image: $e');
+      debugPrint('Error in uploadAndAnalyzeImage: $e');
       rethrow;
     }
   }
-
-  // Get content type based on file extension
-  _getImageContentType(String filePath) {
-    final ext = path.extension(filePath).toLowerCase();
-    switch (ext) {
-      case '.jpg':
-      case '.jpeg':
-        return MediaType('image', 'jpeg');
-      case '.png':
-        return MediaType('image', 'png');
-      case '.gif':
-        return MediaType('image', 'gif');
-      default:
-        return MediaType('image', 'jpeg'); // Default
-    }
-  }
 }
-
-class MediaType {
-  final String type;
-  final String subtype;
-  
-  MediaType(this.type, this.subtype);
-  
-  @override
-  String toString() => '$type/$subtype';
-}
-

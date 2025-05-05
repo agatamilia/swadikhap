@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import '../config/api_config.dart';
@@ -39,6 +40,65 @@ class ApiService {
       },
     ));
   }
+
+  Future<Map<String, dynamic>> analyzeImage(File imageFile, String sessionId) async {
+  try {
+    final formData = FormData.fromMap({
+      'image': await MultipartFile.fromFile(
+        imageFile.path,
+        filename: 'plant_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ),
+      'session_id': sessionId,
+    });
+
+    final response = await _dio.post(
+      ApiConfig.visionEndpoint,
+      data: formData,
+      options: Options(
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        receiveTimeout: const Duration(seconds: 60),
+      ),
+    );
+
+    return response.data;
+  } on DioError catch (e) {
+    if (e.response != null) {
+      throw Exception('Server error: ${e.response?.data['error']}');
+    } else {
+      throw Exception('Network error: ${e.message}');
+    }
+  } catch (e) {
+    throw Exception('Failed to analyze image: $e');
+  }
+}
+  Future<String> _uploadImageToServer(File imageFile, String sessionId) async {
+  try {
+    final formData = FormData.fromMap({
+      'image': await MultipartFile.fromFile(
+        imageFile.path,
+        filename: 'img_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ),
+      'session_id': sessionId,
+    });
+
+    final response = await _dio.post(
+      ApiConfig.uploadEndpoint,
+      data: formData,
+      options: Options(
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      ),
+    );
+
+    return response.data['image_path'];
+  } catch (e) {
+    _logError('_uploadImageToServer', e);
+    return imageFile.path; // Return local path if upload fails
+  }
+}
 
   Future<Response> _requestWithRetry(RequestOptions options, {int retries = 2}) async {
     DioError? lastError;

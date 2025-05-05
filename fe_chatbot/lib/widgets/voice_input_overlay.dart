@@ -7,13 +7,13 @@ class VoiceInputOverlay extends StatelessWidget {
   const VoiceInputOverlay({
     Key? key,
     required this.onCancel,
-    required this.onFinish,
+    required this.onFinish, Color? backgroundColor,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.black.withOpacity(0.3),
+      color: Colors.black.withOpacity(0.3), // Overlay color
       child: Center(
         child: Container(
           width: 250,
@@ -32,11 +32,9 @@ class VoiceInputOverlay extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Only animate the mic icon, not the entire container
-              const _PulsingMic(),
+              const _PulsingMic(), // Only the mic icon will pulse
               const SizedBox(height: 24),
               const Text(
-                // "Mendengarkan...",
                 "Listening...",
                 style: TextStyle(
                   fontSize: 18,
@@ -45,7 +43,6 @@ class VoiceInputOverlay extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               const Text(
-                // "Silakan bicara dengan jelas",
                 "Please speak clearly.",
                 style: TextStyle(
                   fontSize: 14,
@@ -62,16 +59,14 @@ class VoiceInputOverlay extends StatelessWidget {
                       backgroundColor: Colors.grey[200],
                       foregroundColor: Colors.black,
                     ),
-                    // child: const Text("Batal"),
-                    child: const Text("cancel"),
+                    child: const Text("Cancel"),
                   ),
                   ElevatedButton(
                     onPressed: onFinish,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
+                      backgroundColor: Theme.of(context).colorScheme.primary, // Green button color
                       foregroundColor: Colors.white,
                     ),
-                    // child: const Text("Selesai"),
                     child: const Text("Done"),
                   ),
                 ],
@@ -114,30 +109,14 @@ class _PulsingMicState extends State<_PulsingMic> with SingleTickerProviderState
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Only animate the circle behind the mic icon
-          AnimatedBuilder(
-            animation: _animation,
-            builder: (context, child) {
-              return Container(
-                width: 80 * _animation.value,
-                height: 80 * _animation.value,
-                decoration: BoxDecoration( 
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
-                  shape: BoxShape.circle,
-                ),
-              );
-            },
-          ),
-          
-          // Microphone icon (not animated)
-          Container(
-            width: 80,
-            height: 80,
+      child: AnimatedBuilder(
+        animation: _animation,
+        builder: (context, child) {
+          return Container(
+            width: 80 * _animation.value, // Pulsing effect only on the microphone icon
+            height: 80 * _animation.value,
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.8),
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.8), // Green background for mic
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -145,8 +124,8 @@ class _PulsingMicState extends State<_PulsingMic> with SingleTickerProviderState
               color: Colors.white,
               size: 40,
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }

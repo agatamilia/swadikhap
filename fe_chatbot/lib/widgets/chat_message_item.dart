@@ -1,15 +1,22 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:peTaniku/config/api_config.dart';
 import '../models/message.dart';
 
 class ChatMessageItem extends StatelessWidget {
   final ChatMessage message;
   final bool isTyping;
+  final Color userColor;
+  final Color assistantColor;
+  final Color textColor;
 
   const ChatMessageItem({
     Key? key,
     required this.message,
     this.isTyping = false,
+    required this.userColor,
+    required this.assistantColor,
+    required this.textColor,
   }) : super(key: key);
 
   @override
@@ -19,149 +26,223 @@ class ChatMessageItem extends StatelessWidget {
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        child: Card(
-          color: isUser 
-              ? Theme.of(context).colorScheme.primary 
-              : Colors.white,
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Avatar
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: isUser 
-                            ? Theme.of(context).colorScheme.primaryContainer 
-                            : Colors.green[100],
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Text(
-                          isUser ? "👨‍🌾" : "🤖",
-                          style: const TextStyle(fontSize: 16),
-                        ),
+  constraints: BoxConstraints(
+    maxWidth: MediaQuery.of(context).size.width * 0.75,
+  ),
+  child: Card(
+    color: isUser ? Colors.green[600] : Colors.white,
+    margin: const EdgeInsets.symmetric(vertical: 8),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Avatar
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: isUser 
+                          ? Colors.green[600]!.withOpacity(0.2)
+                          : Colors.green[100]!,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        isUser ? "👨‍🌾" : "🤖",
+                        style: const TextStyle(fontSize: 16),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    
-                    // Message content
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          isTyping
-                              ? _buildTypingIndicator()
-                              : _buildMessageContent(context),
-                        ],
-                      ),
+                  ),
+                  const SizedBox(width: 8),
+                  
+                  // Message content
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (isTyping)
+                          _buildTypingIndicator()
+                        else
+                          _buildMessageContent(),
+                      ],
                     ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
+    ),
     );
   }
-  
-  Widget _buildMessageContent(BuildContext context) {
+
+  Widget _buildMessageContent() {
   final isUser = message.role == MessageRole.user;
   
-  // Check if this is an image message
   if (message.imageUrl != null) {
+    // Check if image is from local file or server URL
+    final isLocalFile = message.imageUrl!.startsWith('/') && 
+                        !message.imageUrl!.startsWith('/uploads');
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Image preview
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: Image.file(
-            File(message.imageUrl!),
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: 200,
-            errorBuilder: (context, error, stackTrace) {
-              return Container(
-                width: double.infinity,
-                height: 100,
-                color: Colors.grey[300],
-                child: const Center(
-                  child: Text('Tidak dapat menampilkan gambar'),
+          child: isLocalFile
+              ? Image.file(
+                  File(message.imageUrl!),
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: 200,
+                )
+              : Image.network(
+                  '${ApiConfig.baseUrl}${message.imageUrl!}',
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: 200,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      height: 200,
+                      color: Colors.grey[200],
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                              : null,
+                        ),
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      height: 200,
+                      color: Colors.grey[200],
+                      child: const Center(
+                        child: Icon(Icons.error, color: Colors.red),
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
-          ),
         ),
         const SizedBox(height: 8),
-        // Caption - hanya parse bold untuk assistant
         if (!isUser) 
           RichText(
             text: TextSpan(
-              style: const TextStyle(color: Colors.black),
-              children: _parseBoldText(message.content),
+              style: TextStyle(color: textColor),
+              children: _parseMarkdownText(message.content),
             ),
           )
         else
           Text(
             message.content,
-            style: const TextStyle(color: Colors.white),
+            style: TextStyle(color: textColor),
           ),
       ],
     );
   }
-  
-  // Regular text message - hanya parse bold untuk assistant
-  if (!isUser) {
-    return RichText(
-      text: TextSpan(
-        style: const TextStyle(color: Colors.black),
-        children: _parseBoldText(message.content),
-      ),
-    );
-  }
-  
-  // Pesan user tetap plain text
-  return Text(
-    message.content,
-    style: const TextStyle(color: Colors.white),
-  );
-}
-
-List<TextSpan> _parseBoldText(String text) {
-  final List<TextSpan> spans = [];
-  final parts = text.split('*');
-
-  for (int i = 0; i < parts.length; i++) {
-    if (i % 2 == 1) { // Bagian dengan *...* (indeks ganjil)
-      spans.add(
-        TextSpan(
-          text: parts[i],
-          style: const TextStyle(fontWeight: FontWeight.bold),
+    
+    if (!isUser) {
+      return RichText(
+        text: TextSpan(
+          style: TextStyle(color: textColor),
+          children: _parseBoldText(message.content),
         ),
       );
-    } else if (parts[i].isNotEmpty) { // Bagian normal
-      spans.add(TextSpan(text: parts[i]));
     }
+    
+    return Text(
+      message.content,
+      style: TextStyle(color: textColor),
+    );
   }
+}
+List<TextSpan> _parseMarkdownText(String text) {
+  final List<TextSpan> spans = [];
+  final lines = text.split('\n');
+  bool inList = false;
 
-  // Jika tidak ada tanda *, kembalikan teks biasa
-  if (spans.isEmpty) {
-    spans.add(TextSpan(text: text));
+  for (final line in lines) {
+    if (line.startsWith('- ')) {
+      // List item
+      if (!inList) {
+        spans.add(const TextSpan(text: '\n'));
+        inList = true;
+      }
+      spans.addAll([
+        const TextSpan(text: '• ', style: TextStyle(fontSize: 16)),
+        TextSpan(text: line.substring(2) + '\n'),
+      ]);
+    } else if (line.startsWith('**')) {
+      // Bold text
+      final parts = line.split('**');
+      for (int i = 0; i < parts.length; i++) {
+        if (i % 2 == 1) {
+          spans.add(TextSpan(
+            text: parts[i],
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ));
+        } else if (parts[i].isNotEmpty) {
+          spans.add(TextSpan(text: parts[i]));
+        }
+      }
+      spans.add(const TextSpan(text: '\n'));
+      inList = false;
+    } else {
+      // Regular text
+      spans.add(TextSpan(text: line + '\n'));
+      inList = false;
+    }
   }
 
   return spans;
 }
+  List<TextSpan> _parseBoldText(String text) {
+    final List<TextSpan> spans = [];
+    final parts = text.split('*');
+
+    for (int i = 0; i < parts.length; i++) {
+      if (i % 2 == 1) {
+        var textColor;
+        spans.add(
+          TextSpan(
+            text: parts[i],
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
+        );
+      } else if (parts[i].isNotEmpty) {
+        var textColor;
+        spans.add(TextSpan(
+          text: parts[i],
+          style: TextStyle(color: textColor),
+        ));
+      }
+    }
+
+    if (spans.isEmpty) {
+      var textColor;
+      spans.add(TextSpan(
+        text: text,
+        style: TextStyle(color: textColor),
+      ));
+    }
+
+    return spans;
+  }
+
   Widget _buildTypingIndicator() {
     return Row(
       children: [
@@ -171,7 +252,8 @@ List<TextSpan> _parseBoldText(String text) {
             width: 8,
             height: 8,
             decoration: BoxDecoration(
-              color: Colors.green[300],
+              // color: textColor.withOpacity(0.6),
+              color: Colors.green[400],
               shape: BoxShape.circle,
             ),
             child: const _PulsingDot(),
@@ -179,7 +261,7 @@ List<TextSpan> _parseBoldText(String text) {
       ],
     );
   }
-}
+
 
 class _PulsingDot extends StatefulWidget {
   const _PulsingDot();
@@ -188,7 +270,8 @@ class _PulsingDot extends StatefulWidget {
   State<_PulsingDot> createState() => _PulsingDotState();
 }
 
-class _PulsingDotState extends State<_PulsingDot> with SingleTickerProviderStateMixin {
+class _PulsingDotState extends State<_PulsingDot> 
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
 

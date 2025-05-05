@@ -5,7 +5,7 @@ class SuggestionChips extends StatelessWidget {
   
   const SuggestionChips({
     Key? key,
-    required this.onSuggestionSelected,
+    required this.onSuggestionSelected, Color? chipColor, required Color textColor,
   }) : super(key: key);
 
   @override
@@ -20,20 +20,20 @@ class SuggestionChips extends StatelessWidget {
   }
   
   List<Widget> _buildSuggestions() {
-    // final suggestions = [
-    //   'Teknik menanam padi',
-    //   'Bagaimana mengatasi hama?',
-    //   'Prediksi cuaca minggu ini',
-    //   'Pupuk terbaik untuk jagung',
-    //   'Musim tanam terbaik',
-    // ];
     final suggestions = [
-      'Rice planting techniques',
-      'How to deal with pests?',
-      'Weather forecast for this week',
-      'Best fertilizer for corn',
-      'Best planting season',
+      'Teknik menanam padi',
+      'Bagaimana mengatasi hama?',
+      'Prediksi cuaca minggu ini',
+      'Pupuk terbaik untuk jagung',
+      'Musim tanam terbaik',
     ];
+    // final suggestions = [
+    //   'Rice planting techniques',
+    //   'How to deal with pests?',
+    //   'Weather forecast for this week',
+    //   'Best fertilizer for corn',
+    //   'Best planting season',
+    // ];
     
     return suggestions.map((suggestion) {
       return Padding(
@@ -41,7 +41,7 @@ class SuggestionChips extends StatelessWidget {
         child: ActionChip(
           label: Text(suggestion),
           onPressed: () => onSuggestionSelected(suggestion),
-          backgroundColor: Colors.green[50],
+          backgroundColor: const Color.fromARGB(255, 255, 255, 255),
         ),
       );
     }).toList();
