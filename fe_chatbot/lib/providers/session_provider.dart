@@ -4,6 +4,7 @@ import '../models/chat_session.dart';
 import '../services/api_service.dart';
 
 class SessionProvider with ChangeNotifier {
+  final String _deviceId;
   final ApiService _apiService = ApiService();
   List<ChatSession> _sessions = [];
   ChatSession? _currentSession;
@@ -17,11 +18,18 @@ class SessionProvider with ChangeNotifier {
   bool get hasError => _hasError;
   String? get lastErrorMessage => _lastErrorMessage;
 
-  SessionProvider() {
+  SessionProvider(this._deviceId) {
     _initialize();
   }
 
   Future<void> _initialize() async {
+    // Register device to backend
+    try {
+      await _apiService.registerDevice(_deviceId);
+    } catch (e) {
+      print('Device registration failed: $e');
+    }
+    
     await _loadLastSession();
     await fetchSessions();
   }
@@ -33,7 +41,7 @@ class SessionProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      _sessions = await _apiService.getSessions();
+      _sessions = await _apiService.getSessions(_deviceId);
       
       // If no current session and we have sessions, use the first one
       if (_currentSession == null && _sessions.isNotEmpty) {
@@ -68,7 +76,7 @@ class SessionProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final newSession = await _apiService.createSession(name);
+      final newSession = await _apiService.createSession(name, _deviceId);
       _sessions.insert(0, newSession);
       _currentSession = newSession;
       _saveLastSessionId(newSession.id);
@@ -186,7 +194,7 @@ class SessionProvider with ChangeNotifier {
     notifyListeners();
     
     try {
-      await _apiService.updateSession(updatedSession);
+      await _apiService.updateSession(updatedSession.copyWith(deviceId: _deviceId));
     } catch (e) {
       print('Error updating session name: $e');
       // Keep local change even if server update fails
@@ -228,4 +236,3 @@ class SessionProvider with ChangeNotifier {
     }
   }
 }
-

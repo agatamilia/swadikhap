@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/message.dart';
 import '../services/api_service.dart';
 import '../services/audio_service.dart';
@@ -12,6 +14,8 @@ import '../services/permission_service.dart';
 import '../services/image_service.dart';
 import 'session_provider.dart';
 import '../services/tts_service.dart';
+// Fix the DeviceService issue by importing it
+import '../services/device_service.dart';
 
 class ChatProvider with ChangeNotifier {
   final List<ChatMessage> _messages = [];
@@ -27,6 +31,7 @@ class ChatProvider with ChangeNotifier {
   bool _isInitialized = false;
   File? _pendingImage;
   String _currentSessionId = '';
+  String _deviceId = '';
 
   List<ChatMessage> get messages => _messages;
   bool get isLoading => _isLoading;
@@ -42,6 +47,9 @@ class ChatProvider with ChangeNotifier {
     if (_isInitialized) return;
     
     try {
+      final deviceService = DeviceService();
+      _deviceId = await deviceService.getDeviceId();
+      
       await _ttsService.initialize();
       await _initAudio();
       _isInitialized = true;
@@ -76,7 +84,19 @@ class ChatProvider with ChangeNotifier {
       final savedMessages = await _apiService.getMessages(sessionId);
       
       if (savedMessages.isNotEmpty) {
-        _messages.addAll(savedMessages);
+        // Filter out duplicates by comparing content and role
+        final uniqueMessages = <ChatMessage>[];
+        final seen = <String>{};
+        
+        for (final msg in savedMessages) {
+          final key = '${msg.role}:${msg.content}';
+          if (!seen.contains(key)) {
+            uniqueMessages.add(msg);
+            seen.add(key);
+          }
+        }
+        
+        _messages.addAll(uniqueMessages);
       } else {
         _addWelcomeMessage(sessionId);
       }
@@ -92,6 +112,7 @@ class ChatProvider with ChangeNotifier {
       notifyListeners();
     }
   }
+
   void clearPendingImage() {
     _pendingImage = null;
     notifyListeners();
@@ -100,7 +121,6 @@ class ChatProvider with ChangeNotifier {
   void _addWelcomeMessage(String sessionId) {
     _messages.add(ChatMessage(
       content: "Selamat datang di PeTaniku! Saya siap membantu dengan pertanyaan seputar pertanian.",
-      // content: "Welcome to PeTaniku! I am ready to help with any questions about farming.",
       role: MessageRole.assistant,
     ));
   }
@@ -109,8 +129,6 @@ class ChatProvider with ChangeNotifier {
     _messages.add(ChatMessage(
       content: "Saya tidak dapat terhubung ke server saat ini. Beberapa fitur mungkin terbatas. "
                "Pesan Anda akan disimpan secara lokal dan akan disinkronkan ketika koneksi pulih.",
-      // content: "I can't connect to the server right now. Some features may be limited. "
-      // "Your messages will be stored locally and will sync when the connection is restored.",
       role: MessageRole.assistant,
     ));
   }
@@ -120,132 +138,118 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void sendTemplateMessage(String text, String sessionId, SessionProvider sessionProvider) {
-    // Tambahkan pesan user
-    final userMessage = ChatMessage(
-      content: text,
-      role: MessageRole.user,
-    );
-    _messages.add(userMessage);
-    notifyListeners();
-
-    // Generate template response
-    String botResponse = _generateTemplateResponse(text);
-    
-    // Tambahkan pesan bot setelah delay kecil
-    Future.delayed(const Duration(milliseconds: 500), () {
-      _messages.add(ChatMessage(
-        content: botResponse,
-        role: MessageRole.assistant,
-      ));
-      notifyListeners();
-    });
-  }
-
-  String _generateTemplateResponse(String userInput) {
-    // Template respons berdasarkan input user
-    if (userInput.toLowerCase().contains("hi") || 
-        userInput.toLowerCase().contains("halo") ||
-        userInput.toLowerCase().contains("saya ingin bertanya")) {
-      return """Halo! Selamat datang di PeTaniku, asisten pertanian Anda. 
-
-Apa yang ingin Anda tanyakan hari ini?""";
-    } else if (userInput.toLowerCase().contains("tanam padi")) {
-      return """Cara menanam padi:
-  1. Siapkan bibit unggul
-  2. Olah lahan dengan baik
-  3. Buat sistem pengairan
-  4. Tanam bibit dengan jarak 25x25 cm""";
-    } else {
-      return "Saya bisa membantu dengan berbagai topik pertanian. Anda bisa bertanya tentang:\n- Teknik penanaman\n- Hama tanaman\n- Pupuk dan perawatan";
-    }
-  }
   Future<void> sendMessage(String text, String sessionId, SessionProvider sessionProvider) async {
     if (text.isEmpty && !hasImagePending) return;
-    
-    final userMessage = ChatMessage(
-      content: text,
-      role: MessageRole.user,
-      imageUrl: _pendingImage?.path,
-    );
-    _messages.add(userMessage);
-    notifyListeners();
-    
-    try {
-      await _apiService.saveMessage(userMessage, sessionId);
-    } catch (e) {
-      print('Failed to save message: $e');
-    }
-    
-    if (_messages.length == 1) {
-      final sessionName = text.length > 30 ? '${text.substring(0, 30)}...' : text;
+
+    // If this is the first message, set session name
+    if (_messages.isEmpty) {
+      final sessionName = text.isNotEmpty 
+          ? (text.length > 30 ? '${text.substring(0, 30)}...' : text)
+          : 'Analisis Gambar';
       try {
         await sessionProvider.updateSessionName(sessionId, sessionName);
       } catch (e) {
         print('Failed to update session name: $e');
       }
     }
-    
-    // Handle image processing if there's a pending image
+
+    // Process image if there's a pending image
     if (_pendingImage != null) {
       await _processImage(sessionId);
-    } else {
-      // Process regular text message
-      _isLoading = true;
-      notifyListeners();
-      
-      try {
-        final response = await _apiService.sendMessage(text, sessionId);
-        await _addBotMessage(response['response'], sessionId);
-      } catch (e) {
-        print('Error sending message: $e');
-        await _addBotMessage(_getErrorMessage(e), sessionId);
-      }
+      return;
+    }
+    
+    // For text-only messages
+    final userMessage = ChatMessage(
+      content: text,
+      role: MessageRole.user,
+    );
+    _messages.add(userMessage);
+    notifyListeners();
+
+    try {
+      await _apiService.saveMessage(userMessage, sessionId);
+    } catch (e) {
+      print('Failed to save message: $e');
+    }
+
+    // Process regular text message
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final response = await _apiService.sendMessage(text, sessionId, _deviceId);
+      await _addBotMessage(response['response'], sessionId);
+    } catch (e) {
+      print('Error sending message: $e');
+      await _addBotMessage(_getErrorMessage(e), sessionId);
     }
   }
 
   Future<void> _processImage(String sessionId) async {
-  if (_pendingImage == null) return;
-  
-  _isLoading = true;
-  notifyListeners();
-  
-  try {
-    // Kirim gambar ke API Python via Ngrok
-    final response = await _apiService.analyzeImage(_pendingImage!, sessionId);
+    if (_pendingImage == null) return;
     
-    // Update pesan user dengan path gambar
-    if (_messages.isNotEmpty && _messages.last.role == MessageRole.user) {
-      final lastIndex = _messages.length - 1;
-      _messages[lastIndex] = _messages[lastIndex].copyWith(
-        imageUrl: response['image_path'],
+    _isLoading = true;
+    notifyListeners();
+    
+    try {
+      // First, add the user message with the image
+      final userMessage = ChatMessage(
+        content: "Analisis gambar tanaman ini",
+        role: MessageRole.user,
+        imageUrl: _pendingImage!.path,
       );
+      
+      _messages.add(userMessage);
+      notifyListeners();
+      
+      try {
+        await _apiService.saveMessage(userMessage, sessionId);
+      } catch (e) {
+        print('Failed to save user message with image: $e');
+      }
+      
+      // Then send the image for analysis
+      // Tambahkan device_id sebagai parameter ketiga
+      final response = await _imageService.analyzeImage(_pendingImage!, sessionId, _deviceId);
+      
+      if (response.containsKey('error')) {
+        throw Exception(response['error']);
+      }
+      
+      // Update the user message with the server image path if available
+      if (response.containsKey('image_path')) {
+        final lastIndex = _messages.length - 1;
+        _messages[lastIndex] = _messages[lastIndex].copyWith(
+          imageUrl: response['image_path'],
+        );
+        notifyListeners();
+      }
+      
+      // Add the bot response
+      final analysis = response['analysis'] ?? 'Tidak dapat menganalisis gambar.';
+      await _addBotMessage(analysis, sessionId);
+      
+      _pendingImage = null;
+    } catch (e) {
+      debugPrint('Error processing image: $e');
+      await _addBotMessage(
+        'Gagal menganalisis gambar. Silakan coba lagi. Error: ${e.toString()}',
+        sessionId,
+      );
+      _pendingImage = null;
+    } finally {
+      _isLoading = false;
       notifyListeners();
     }
-    
-    // Tambahkan respon analisis dari server
-    await _addBotMessage(response['analysis'], sessionId);
-    
-    _pendingImage = null;
-  } catch (e) {
-    debugPrint('Error processing image: $e');
-    await _addBotMessage(
-      'Gagal menganalisis gambar. Silakan coba lagi.',
-      sessionId,
-    );
-    _pendingImage = null;
-  } finally {
-    _isLoading = false;
-    notifyListeners();
   }
-}
 
   String _getErrorMessage(dynamic error) {
     return "Terjadi kesalahan tak terduga. Silakan coba lagi.";
   }
 
   Future<void> _addBotMessage(String content, String sessionId) async {
-    final cleanContent = content.replaceAll('*', ''); // Remove asterisks for clean TTS
+    final cleanContent = content.replaceAll('*', '');
     final botMessage = ChatMessage(
       content: content,
       cleanContent: cleanContent,
@@ -270,7 +274,6 @@ Apa yang ingin Anda tanyakan hari ini?""";
 
   Future<void> _speakText(String text) async {
     try {
-      // Make sure text is clean from formatting
       final cleanText = text.replaceAll('*', '');
       await _ttsService.speak(cleanText);
     } catch (e) {
@@ -280,7 +283,6 @@ Apa yang ingin Anda tanyakan hari ini?""";
 
   Future<void> startListening(BuildContext context) async {
     try {
-      // Check permissions
       if (!await PermissionService.hasMicrophonePermission()) {
         final granted = await PermissionService.requestMicrophonePermission();
         if (!granted && context.mounted) {
@@ -289,7 +291,6 @@ Apa yang ingin Anda tanyakan hari ini?""";
         }
       }
 
-      // Initialize and start recording
       await _audioService.initRecorder();
       await _audioService.startRecording();
       
@@ -298,8 +299,7 @@ Apa yang ingin Anda tanyakan hari ini?""";
     } catch (e) {
       _isListening = false;
       notifyListeners();
-      // _showErrorSnackbar(context, 'Gagal memulai rekaman: ${e.toString()}');
-      _showErrorSnackbar(context, 'Failed to start recording: ${e.toString()}');
+      _showErrorSnackbar(context, 'Gagal memulai rekaman: ${e.toString()}');
     }
   }
 
@@ -311,7 +311,6 @@ Apa yang ingin Anda tanyakan hari ini?""";
     notifyListeners();
 
     try {
-      // Stop recording and get file
       final recordingPath = await _audioService.stopRecording();
       if (recordingPath == null) {
         throw Exception('No recording path available');
@@ -322,33 +321,27 @@ Apa yang ingin Anda tanyakan hari ini?""";
         throw Exception('Recording file not found');
       }
 
-      // Add temporary audio message
       final audioMessage = ChatMessage(
         id: 'audio_${DateTime.now().millisecondsSinceEpoch}',
-        // content: 'Mengolah pesan suara...',
-        content: 'Processing voice messages...',
+        content: 'Mengolah pesan suara...',
         role: MessageRole.user,
         isAudio: true,
       );
       _addMessage(sessionId, audioMessage);
 
-      // Send to Whisper
       final response = await _apiService.transcribeAudio(recordingFile, sessionId);
       final transcription = response['transcription'] as String;
       final aiResponse = response['ai_response'] as String;
       
-      // Update the message with transcription
       final index = messages.indexWhere((m) => m.id == audioMessage.id);
       if (index != -1) {
         messages[index] = messages[index].copyWith(content: transcription);
         notifyListeners();
       }
 
-      // Add AI response directly since it's already processed by the server
       await _addBotMessage(aiResponse, sessionId);
     } catch (e) {
-      // _addBotMessage("Gagal memproses rekaman suara: ${e.toString()}", sessionId);
-      _addBotMessage("Failed to process voice recording: ${e.toString()}", sessionId);
+      _addBotMessage("Gagal memproses rekaman suara: ${e.toString()}", sessionId);
       print('Error in stopListening: $e');
     } finally {
       _isLoading = false;
@@ -365,7 +358,6 @@ Apa yang ingin Anda tanyakan hari ini?""";
   void _addMessage(String sessionId, ChatMessage message) {
     messages.add(message);
     notifyListeners();
-    // Save to backend
     _apiService.saveMessage(message, sessionId);
   }
 
@@ -395,9 +387,25 @@ Apa yang ingin Anda tanyakan hari ini?""";
       
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Gambar telah dipilih. Silakan ketik pertanyaan Anda dan kirim.'),
-            duration: Duration(seconds: 3),
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text('Gambar telah dipilih. Silakan ketik pertanyaan Anda dan kirim.'),
+                ),
+                const SizedBox(width: 10),
+                Image.file(
+                  savedImage,
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.cover,
+                ),
+              ],
+            ),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.green[700],
           )
         );
       }
@@ -410,8 +418,7 @@ Apa yang ingin Anda tanyakan hari ini?""";
           const SnackBar(
             content: Text('Gagal memilih gambar. Silakan coba lagi.'),
             duration: Duration(seconds: 3),
-          ),
-        );
+        ));
       }
     }
   }
@@ -431,6 +438,42 @@ Apa yang ingin Anda tanyakan hari ini?""";
       notifyListeners();
     }
   }
+  
+  // Fix the toMap method by ensuring ChatMessage has a toMap method
+  // Add this method to the ChatMessage class in your models/message.dart file
+  // If you don't have access to edit that file, you can create a temporary map here:
+  Future<void> saveMessageLocally(ChatMessage message, String sessionId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'chat_${_deviceId}_$sessionId';
+    
+    List<String> messages = prefs.getStringList(key) ?? [];
+    messages.add(jsonEncode({
+      'id': message.id,
+      'content': message.content,
+      'role': message.role.toString(),
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'imageUrl': message.imageUrl,
+      'isAudio': message.isAudio,
+    }));
+    await prefs.setStringList(key, messages);
+  }
+
+  Future<List<ChatMessage>> getLocalMessages(String sessionId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'chat_${_deviceId}_$sessionId';
+    
+    List<String> messages = prefs.getStringList(key) ?? [];
+    return messages.map((json) {
+      final map = jsonDecode(json);
+      return ChatMessage(
+        id: map['id'],
+        content: map['content'],
+        role: map['role'] == 'MessageRole.user' ? MessageRole.user : MessageRole.assistant,
+        imageUrl: map['imageUrl'],
+        isAudio: map['isAudio'] ?? false,
+      );
+    }).toList();
+  }
 
   @override
   void dispose() {
@@ -439,4 +482,3 @@ Apa yang ingin Anda tanyakan hari ini?""";
     super.dispose();
   }
 }
-

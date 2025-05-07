@@ -1,22 +1,16 @@
-from flask import Flask, json, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 import os
-import requests
 import uuid
 from datetime import datetime
 from werkzeug.utils import secure_filename
-import subprocess
 from dotenv import load_dotenv
 import whisper
 import logging
 from flask_ngrok import run_with_ngrok
 from flask_cors import CORS
 from flask_migrate import Migrate
-from PIL import Image
-import numpy as np
-import base64
-import io
-import os
+import requests
 
 # Load environment variables
 load_dotenv()
@@ -33,26 +27,24 @@ CORS(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(os.path.dirname(__file__), 'chatbot.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+
 # API Keys
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
-# File upload configuration
-UPLOAD_FOLDER = 'uploads/audio'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-MAX_AUDIO_DURATION = 30  # seconds
-MIN_AUDIO_DURATION = 0.5  # seconds
+# Helper function for upload folders
+def get_upload_folder(device_id, file_type):
+    base_folder = os.path.join('uploads', device_id, file_type)
+    os.makedirs(base_folder, exist_ok=True)
+    return base_folder
 
-# Create upload folder for images
-UPLOAD_IMAGE_FOLDER = 'uploads/images'
-os.makedirs(UPLOAD_IMAGE_FOLDER, exist_ok=True)
-app.config['UPLOAD_IMAGE_FOLDER'] = UPLOAD_IMAGE_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 # Database Models
 class Session(db.Model):
     __tablename__ = 'sessions'
     
     id = db.Column(db.String(36), primary_key=True)
+    device_id = db.Column(db.String(255), nullable=False, index=True)  # Added index for faster queries
     name = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.BigInteger, nullable=False)
     updated_at = db.Column(db.BigInteger, nullable=False)
@@ -64,13 +56,16 @@ class Message(db.Model):
     
     id = db.Column(db.String(36), primary_key=True)
     session_id = db.Column(db.String(36), db.ForeignKey('sessions.id'), nullable=False)
+    device_id = db.Column(db.String(255), nullable=False, index=True)  # Added index for faster queries
     content = db.Column(db.Text, nullable=False)
     role = db.Column(db.String(20), nullable=False)
     timestamp = db.Column(db.BigInteger, nullable=False)
-    image_path = db.Column(db.String(255))
-    audio_path = db.Column(db.String(255))
+    image_path = db.Column(db.String(255), nullable=True) 
+    audio_path = db.Column(db.String(255), nullable=True)
 
-migrate = Migrate(app, db)
+# Initialize database
+with app.app_context():
+    db.create_all()
 
 # Whisper model initialization
 try:
@@ -80,154 +75,61 @@ except Exception as e:
     logging.error(f"Failed to load Whisper model: {e}")
     WHISPER_MODEL = None
 
-with app.app_context():
-    db.drop_all()  # WARNING: Deletes all data!
-    db.create_all()
-
-if not os.access(UPLOAD_FOLDER, os.W_OK):
-    logger.error(f"Upload folder not writable: {UPLOAD_FOLDER}")
-
-
-
-
-@app.route('/api/transcribe', methods=['POST'])
-def transcribe_audio():
-    if 'audio' not in request.files:
-        return jsonify({"error": "No audio file provided"}), 400
-
-    audio_file = request.files['audio']
-    if audio_file.filename == '':
-        return jsonify({"error": "Empty filename"}), 400
-
-    try:
-        # Save file
-        filename = f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}.wav"
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        audio_file.save(filepath)
-
-        # Validate audio
-        validation = validate_audio_file(filepath)
-        if validation.get('error'):
-            return jsonify(validation), 400
-
-        # Transcribe
-        result = WHISPER_MODEL.transcribe(
-            filepath,
-            language="id",
-            task="transcribe"
-        )
-        transcription = result.get("text", "").strip()
-        
-        # Remove ### from transcription
-        transcription = transcription.replace('###', '').strip()
-        
-        if not transcription:
-            return jsonify({"error": "No speech detected"}), 400
-
-        # Get AI response
-        ai_response = get_deepseek_response(transcription)
-        
-        # Remove ### from AI response if exists
-        ai_response = ai_response.replace('###', '').strip()
-            
-        session_id = request.form.get('session_id')
-        if not session_id:
-            new_session = Session(
-                id=str(uuid.uuid4()),
-                name="Percakapan Audio",
-                created_at=int(datetime.now().timestamp() * 1000),
-                updated_at=int(datetime.now().timestamp() * 1000)
-            )
-            db.session.add(new_session)
-            db.session.commit()
-            session_id = new_session.id
-
-        return jsonify({
-            "status": "success",
-            "transcription": transcription,
-            "ai_response": ai_response,
-            "audio_url": f"/uploads/audio/{filename}"
-        })
-
-    except Exception as e:
-        logging.error(f"Transcription error: {str(e)}")
-        return jsonify({"error": "Audio processing failed"}), 500
-    
-def validate_audio_file(filepath):
-    """Validasi format dan durasi audio"""
-    try:
-        # Cek apakah file ada
-        if not os.path.exists(filepath):
-            return {"error": "File not found"}
-            
-        # Cek ukuran file minimal (100 bytes)
-        if os.path.getsize(filepath) < 100:
-            return {"error": "File too small (corrupted?)"}
-        
-        # Validasi dengan ffprobe
-        result = subprocess.run([
-            'ffprobe', '-v', 'error',
-            '-show_entries', 'stream=codec_type,sample_rate,channels',
-            '-of', 'json',
-            filepath
-        ], capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            return {"error": "Invalid audio file", "details": result.stderr}
-            
-        # Parse output ffprobe
-        probe_data = json.loads(result.stdout)
-        streams = probe_data.get('streams', [])
-        
-        if not any(s.get('codec_type') == 'audio' for s in streams):
-            return {"error": "No audio stream found"}
-            
-        # Cek sample rate dan channels
-        for stream in streams:
-            if stream.get('codec_type') == 'audio':
-                if int(stream.get('sample_rate', 0)) < 8000:
-                    return {"error": "Sample rate too low (min 8kHz)"}
-                if int(stream.get('channels', 0)) < 1:
-                    return {"error": "No audio channels"}
-                    
-        return {"valid": True}
-        
-        
-    except json.JSONDecodeError:
-        return {"error": "Invalid JSON response from ffprobe"}
-    except Exception as e:
-        return {"error": f"Validation error: {str(e)}"}
-    
 @app.route('/')
 def home():
     return jsonify({"status": "Flask is running!"})
 
-# Session management endpoints
+# Device Endpoints
+@app.route('/api/device', methods=['POST'])
+def register_device():
+    try:
+        data = request.json
+        device_id = data.get('device_id')
+        
+        if not device_id:
+            return jsonify({"error": "Device ID is required"}), 400
+            
+        return jsonify({
+            "status": "success",
+            "device_id": device_id
+        })
+        
+    except Exception as e:
+        logger.error(f"Device registration error: {e}")
+        return jsonify({"error": "Device registration failed"}), 500
+
+# Session Endpoints
 @app.route('/api/sessions', methods=['GET'])
 def get_sessions():
-    try:
-        sessions = Session.query.order_by(Session.updated_at.desc()).all()
-        return jsonify([{
-            "id": session.id,
-            "name": session.name,
-            "created_at": session.created_at,
-            "updated_at": session.updated_at
-        } for session in sessions])
-    except Exception as e:
-        logger.error(f"Error getting sessions: {e}")
-        return jsonify({"error": "Failed to get sessions"}), 500
+    device_id = request.args.get('device_id')
+    if not device_id:
+        return jsonify({"error": "Device ID is required"}), 400
+        
+    # Filter sessions by device_id
+    sessions = Session.query.filter_by(device_id=device_id).order_by(Session.updated_at.desc()).all()
+    return jsonify([{
+        "id": session.id,
+        "name": session.name,
+        "created_at": session.created_at,
+        "updated_at": session.updated_at
+    } for session in sessions])
 
 @app.route('/api/sessions', methods=['POST'])
 def create_session():
     try:
         data = request.json
         name = data.get('name', 'New Chat')
+        device_id = data.get('device_id')
         
+        if not device_id:
+            return jsonify({"error": "Device ID is required"}), 400
+            
         session_id = str(uuid.uuid4())
         current_time = int(datetime.now().timestamp() * 1000)
         
         new_session = Session(
             id=session_id,
+            device_id=device_id,
             name=name,
             created_at=current_time,
             updated_at=current_time
@@ -242,21 +144,57 @@ def create_session():
             "created_at": current_time,
             "updated_at": current_time
         })
+        
     except Exception as e:
         logger.error(f"Error creating session: {e}")
         db.session.rollback()
         return jsonify({"error": "Failed to create session"}), 500
 
+@app.route('/api/sessions/<session_id>', methods=['GET'])
+def get_session_by_id(session_id):
+    try:
+        device_id = request.args.get('device_id')
+        if not device_id:
+            return jsonify({"error": "Device ID is required"}), 400
+            
+        session = Session.query.filter_by(id=session_id, device_id=device_id).first()
+        if not session:
+            return jsonify({"error": "Session not found"}), 404
+
+        messages = Message.query.filter_by(session_id=session_id, device_id=device_id).order_by(Message.timestamp.asc()).all()
+
+        message_list = [{
+            "id": msg.id,
+            "session_id": msg.session_id,
+            "content": msg.content,
+            "role": msg.role,
+            "timestamp": msg.timestamp,
+            "image_path": msg.image_path,
+            "audio_path": msg.audio_path
+        } for msg in messages]
+
+        return jsonify({
+            "session_id": session.id,
+            "name": session.name,
+            "messages": message_list
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting session by ID: {e}")
+        return jsonify({"error": "Failed to get session data"}), 500
+
 @app.route('/api/sessions/<session_id>', methods=['PUT'])
 def update_session(session_id):
     try:
-        data = request.json
-        name = data.get('name')
+        device_id = request.json.get('device_id')
+        name = request.json.get('name')
         
+        if not device_id:
+            return jsonify({"error": "Device ID is required"}), 400
         if not name:
             return jsonify({"error": "Name is required"}), 400
         
-        session = db.session.get(Session, session_id)
+        session = Session.query.filter_by(id=session_id, device_id=device_id).first()
         if not session:
             return jsonify({"error": "Session not found"}), 404
         
@@ -275,7 +213,11 @@ def update_session(session_id):
 @app.route('/api/sessions/<session_id>', methods=['DELETE'])
 def delete_session(session_id):
     try:
-        session = db.session.get(Session, session_id)
+        device_id = request.args.get('device_id')
+        if not device_id:
+            return jsonify({"error": "Device ID is required"}), 400
+            
+        session = Session.query.filter_by(id=session_id, device_id=device_id).first()
         if not session:
             return jsonify({"error": "Session not found"}), 404
         
@@ -288,10 +230,15 @@ def delete_session(session_id):
         db.session.rollback()
         return jsonify({"error": "Failed to delete session"}), 500
 
+# Message Endpoints
 @app.route('/api/sessions/<session_id>/messages', methods=['GET'])
 def get_messages(session_id):
     try:
-        messages = Message.query.filter_by(session_id=session_id).order_by(Message.timestamp.asc()).all()
+        device_id = request.args.get('device_id')
+        if not device_id:
+            return jsonify({"error": "Device ID is required"}), 400
+            
+        messages = Message.query.filter_by(session_id=session_id, device_id=device_id).order_by(Message.timestamp.asc()).all()
         
         return jsonify([{
             "id": msg.id,
@@ -300,7 +247,7 @@ def get_messages(session_id):
             "role": msg.role,
             "timestamp": msg.timestamp,
             "image_path": msg.image_path,
-            "audio_path": msg.audio_path  # This will now work after migration
+            "audio_path": msg.audio_path
         } for msg in messages])
     except Exception as e:
         logger.error(f"Error getting messages: {e}")
@@ -310,36 +257,33 @@ def get_messages(session_id):
 def save_message(session_id):
     try:
         data = request.json
-        if not data:
-            return jsonify({"error": "No data provided"}), 400
-
-        # Validate required fields
-        required_fields = ['content', 'role']
-        if not all(field in data for field in required_fields):
-            return jsonify({"error": f"Missing required fields: {required_fields}"}), 400
-
-        # Get session
-        session = db.session.get(Session, session_id)
+        device_id = data.get('device_id')
+        
+        if not device_id:
+            return jsonify({"error": "Device ID is required"}), 400
+            
+        if not data or 'content' not in data or 'role' not in data:
+            return jsonify({"error": "Missing required fields"}), 400
+            
+        session = Session.query.filter_by(id=session_id, device_id=device_id).first()
         if not session:
             return jsonify({"error": "Session not found"}), 404
-
-        # Create message
+            
         message = Message(
             id=str(uuid.uuid4()),
             session_id=session_id,
+            device_id=device_id,
             content=data['content'],
             role=data['role'],
             timestamp=int(datetime.now().timestamp() * 1000),
             image_path=data.get('image_path'),
             audio_path=data.get('audio_path')
         )
-
-        # Update session
+        
         session.updated_at = int(datetime.now().timestamp() * 1000)
-
         db.session.add(message)
         db.session.commit()
-
+        
         return jsonify({
             "id": message.id,
             "session_id": session_id,
@@ -349,16 +293,25 @@ def save_message(session_id):
             "image_path": message.image_path,
             "audio_path": message.audio_path
         }), 201
-
+        
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error saving message: {str(e)}")
-        return jsonify({"error": "Failed to save message", "details": str(e)}), 500
-    
+        return jsonify({"error": "Failed to save message", "details": str(e)}), 500 
+
 @app.route('/api/sessions/<session_id>/messages/<message_id>', methods=['DELETE'])
 def delete_message(session_id, message_id):
     try:
-        message = Message.query.filter_by(id=message_id, session_id=session_id).first()
+        device_id = request.args.get('device_id')
+        if not device_id:
+            return jsonify({"error": "Device ID is required"}), 400
+            
+        message = Message.query.filter_by(
+            id=message_id, 
+            session_id=session_id,
+            device_id=device_id
+        ).first()
+        
         if not message:
             return jsonify({"error": "Message not found"}), 404
         
@@ -374,7 +327,11 @@ def delete_message(session_id, message_id):
 @app.route('/api/sessions/<session_id>/messages', methods=['DELETE'])
 def clear_messages(session_id):
     try:
-        Message.query.filter_by(session_id=session_id).delete()
+        device_id = request.args.get('device_id')
+        if not device_id:
+            return jsonify({"error": "Device ID is required"}), 400
+            
+        Message.query.filter_by(session_id=session_id, device_id=device_id).delete()
         db.session.commit()
         
         return jsonify({"message": "All messages cleared successfully"})
@@ -383,71 +340,375 @@ def clear_messages(session_id):
         db.session.rollback()
         return jsonify({"error": "Failed to clear messages"}), 500
 
-@app.route('/api/weather', methods=['GET'])
-def get_weather():
+# File Upload Endpoints
+@app.route('/api/upload/audio', methods=['POST'])
+def upload_audio():
+    if 'audio' not in request.files:
+        return jsonify({"error": "No audio file provided"}), 400
+        
+    device_id = request.form.get('device_id')
+    if not device_id:
+        return jsonify({"error": "Device ID is required"}), 400
+        
+    audio_file = request.files['audio']
+    if audio_file.filename == '':
+        return jsonify({"error": "Empty filename"}), 400
+        
     try:
-        lat = request.args.get('lat', type=float)
-        lon = request.args.get('lon', type=float)
-        is_mock = request.args.get('mock', 'false').lower() == 'true'
-        
-        if is_mock:
-            return jsonify(get_mock_weather_data())
-            
-        # Get weather data from OpenWeather
-        weather_data = get_openweather_data(lat, lon)
-        
-        if not weather_data:
-            return jsonify({
-                'error': 'Failed to fetch weather data',
-                'mock': True,
-                'temperature': 30.0,
-                'condition': 'sunny',
-                'description': 'Cerah',
-                'location': 'Jakarta',
-                'advice': 'Cocok untuk panen atau pengeringan hasil panen'
-            }), 500
+        upload_folder = get_upload_folder(device_id, 'audio')
+        filename = f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}.wav"
+        filepath = os.path.join(upload_folder, filename)
+        audio_file.save(filepath)
         
         return jsonify({
-            'temperature': weather_data['main']['temp'],
-            'condition': map_weather_condition(weather_data['weather'][0]['main']),
-            'description': weather_data['weather'][0]['description'],
-            'location': weather_data.get('name', 'Unknown Location'),
-            'advice': get_farming_advice(weather_data['weather'][0]['main'])
+            "status": "success",
+            "file_url": f"/uploads/{device_id}/audio/{filename}"
         })
         
     except Exception as e:
-        logger.error(f"Weather API error: {e}")
-        return jsonify({
-            'error': str(e),
-            'mock': True,
-            'temperature': 30.0,
-            'condition': 'sunny',
-            'description': 'Cerah',
-            'location': 'Jakarta',
-            'advice': 'Cocok untuk panen atau pengeringan hasil panen'
-        }), 500
+        logger.error(f"Audio upload error: {str(e)}")
+        return jsonify({"error": "Audio upload failed"}), 500
 
+@app.route('/api/upload/image', methods=['POST'])
+def upload_image():
+    if 'image' not in request.files:
+        return jsonify({"error": "No image file provided"}), 400
+        
+    device_id = request.form.get('device_id')
+    if not device_id:
+        return jsonify({"error": "Device ID is required"}), 400
+        
+    image_file = request.files['image']
+    if image_file.filename == '':
+        return jsonify({"error": "Empty filename"}), 400
+        
+    try:
+        upload_folder = get_upload_folder(device_id, 'images')
+        filename = secure_filename(f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}.{image_file.filename.split('.')[-1].lower()}")
+        filepath = os.path.join(upload_folder, filename)
+        image_file.save(filepath)
+        
+        return jsonify({
+            "status": "success",
+            "file_url": f"/uploads/{device_id}/images/{filename}"
+        })
+        
+    except Exception as e:
+        logger.error(f"Image upload error: {str(e)}")
+        return jsonify({"error": "Image upload failed"}), 500
+
+# File Serving Endpoints
+@app.route('/uploads/<device_id>/audio/<filename>')
+def serve_audio(device_id, filename):
+    return send_from_directory(get_upload_folder(device_id, 'audio'), filename)
+
+@app.route('/uploads/<device_id>/images/<filename>')
+def serve_image(device_id, filename):
+    return send_from_directory(get_upload_folder(device_id, 'images'), filename)
+
+# Audio Transcription Endpoint
+# Tambahkan logging yang lebih detail untuk membantu debugging
+@app.route('/api/transcribe', methods=['POST'])
+def transcribe_audio():
+    try:
+        logger.info("Transcribe endpoint called")
+        
+        if 'audio' not in request.files:
+            logger.error("No audio file provided")
+            return jsonify({"error": "No audio file provided"}), 400
+            
+        device_id = request.form.get('device_id')
+        session_id = request.form.get('session_id')
+        
+        logger.info(f"Transcribe request for device_id: {device_id}, session_id: {session_id}")
+        
+        if not device_id:
+            logger.warning("Device ID is required but not provided")
+            device_id = "unknown_device"
+            
+        audio_file = request.files['audio']
+        if audio_file.filename == '':
+            logger.error("Empty filename")
+            return jsonify({"error": "Empty filename"}), 400
+            
+        # Save the audio file
+        upload_folder = get_upload_folder(device_id, 'audio')
+        filename = f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}.wav"
+        filepath = os.path.join(upload_folder, filename)
+        
+        logger.info(f"Saving audio file to: {filepath}")
+        audio_file.save(filepath)
+        
+        # Transcribe with Whisper
+        if WHISPER_MODEL is None:
+            logger.error("Whisper model not available")
+            return jsonify({
+                "error": "Whisper model not available",
+                "transcription": "Maaf, layanan pengenalan suara sedang tidak tersedia.",
+                "ai_response": "Silakan coba lagi nanti atau ketik pesan Anda."
+            }), 200
+            
+        logger.info("Transcribing with Whisper model")
+        result = WHISPER_MODEL.transcribe(filepath)
+        transcription = result["text"]
+        logger.info(f"Transcription result: {transcription}")
+        
+        # Send to DeepSeek API for response
+        try:
+            logger.info("Sending to DeepSeek API")
+            headers = {
+                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "model": "deepseek-chat",
+                "messages": [
+                    {
+                        "role": "system", 
+                        "content": """Anda adalah Asisten Pertanian PeTaniku yang ahli di bidang:
+    - Pertanian dan perkebunan
+    - Cuaca dan iklim untuk pertanian
+    - Pengelolaan tanaman dan tanah
+    - Teknologi pertanian
+
+    Bantu pengguna dengan:
+    1. Berikan jawaban mendetail untuk pertanyaan pertanian
+    2. Jika pertanyaan di luar topik, jawab dengan sopan:
+       "Maaf, saya hanya dapat membantu tentang pertanian. Ada yang bisa saya bantu terkait tanaman, cuaca pertanian, atau hal terkait?"
+
+    Gaya respons:
+    - Gunakan bahasa sederhana dan praktis
+    - Format jelas dengan paragraf terpisah
+    - Hindari jargon teknis berlebihan"""
+                    },
+                    {"role": "user", "content": transcription}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 1000
+            }
+            
+            logger.info("Sending request to DeepSeek API")
+            response = requests.post(
+                "https://api.deepseek.com/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            
+            logger.info(f"DeepSeek API response status: {response.status_code}")
+            result = response.json()
+            logger.info(f"DeepSeek API response: {result}")
+            
+            if response.status_code == 200:
+                ai_response = result['choices'][0]['message']['content']
+                
+                # Save messages to database if session_id is provided
+                if session_id:
+                    try:
+                        current_time = int(datetime.now().timestamp() * 1000)
+                        
+                        user_message = Message(
+                            id=str(uuid.uuid4()),
+                            session_id=session_id,
+                            device_id=device_id,
+                            content=transcription,
+                            role='user',
+                            timestamp=current_time,
+                            audio_path=f"/uploads/{device_id}/audio/{filename}"
+                        )
+                        
+                        assistant_message = Message(
+                            id=str(uuid.uuid4()),
+                            session_id=session_id,
+                            device_id=device_id,
+                            content=ai_response,
+                            role='assistant',
+                            timestamp=current_time + 1
+                        )
+                        
+                        session = Session.query.filter_by(id=session_id).first()
+                        if session:
+                            session.updated_at = current_time
+                            db.session.add_all([user_message, assistant_message])
+                            db.session.commit()
+                            logger.info("Messages saved to database")
+                        else:
+                            logger.warning(f"Session not found: {session_id}")
+                    except Exception as e:
+                        logger.error(f"Error saving messages to database: {e}")
+                        # Continue even if database save fails
+                
+                return jsonify({
+                    "status": "success",
+                    "transcription": transcription,
+                    "ai_response": ai_response,
+                    "audio_path": f"/uploads/{device_id}/audio/{filename}"
+                })
+            else:
+                logger.error(f"DeepSeek API error: {result}")
+                return jsonify({
+                    "error": "Failed to get AI response", 
+                    "details": result,
+                    "transcription": transcription,
+                    "ai_response": "Maaf, saya tidak dapat memproses permintaan Anda saat ini. Silakan coba lagi nanti."
+                }), 200
+        except Exception as e:
+            logger.error(f"Error calling DeepSeek API: {e}")
+            return jsonify({
+                "error": "Failed to get AI response",
+                "transcription": transcription,
+                "ai_response": "Maaf, saya tidak dapat memproses permintaan Anda saat ini. Silakan coba lagi nanti."
+            }), 200
+            
+    except Exception as e:
+        logger.error(f"Transcription error: {str(e)}")
+        return jsonify({
+            "error": "Audio transcription failed", 
+            "details": str(e),
+            "transcription": "Maaf, saya tidak dapat mengenali suara Anda saat ini.",
+            "ai_response": "Silakan coba lagi nanti atau ketik pesan Anda."
+        }), 200
+
+# Image Analysis Endpoint
+@app.route('/api/vision', methods=['POST'])
+def analyze_image():
+    try:
+        if 'image' not in request.files:
+            return jsonify({"error": "No image file provided"}), 400
+            
+        device_id = request.form.get('device_id')
+        session_id = request.form.get('session_id')
+        prompt = request.form.get('prompt', 'Analisis gambar tanaman ini dan berikan informasi tentang kondisinya.')
+        
+        if not device_id:
+            return jsonify({"error": "Device ID is required"}), 400
+            
+        image_file = request.files['image']
+        if image_file.filename == '':
+            return jsonify({"error": "Empty filename"}), 400
+            
+        # Save the image file
+        upload_folder = get_upload_folder(device_id, 'images')
+        filename = secure_filename(f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}.{image_file.filename.split('.')[-1].lower()}")
+        filepath = os.path.join(upload_folder, filename)
+        image_file.save(filepath)
+        
+        # Convert image to base64 for DeepSeek API
+        import base64
+        with open(filepath, "rb") as img_file:
+            img_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+        
+        # Send to DeepSeek API for analysis
+        headers = {
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "deepseek-vision",
+            "messages": [
+                {
+                    "role": "system", 
+                    "content": """Anda adalah Asisten Pertanian PeTaniku yang ahli menganalisis gambar tanaman.
+Berikan analisis detail tentang:
+- Jenis tanaman yang terlihat
+- Kondisi kesehatan tanaman
+- Kemungkinan masalah atau penyakit
+- Saran perawatan atau penanganan
+
+Gunakan bahasa yang sederhana dan praktis untuk petani Indonesia."""
+                },
+                {
+                    "role": "user", 
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}}
+                    ]
+                }
+            ],
+            "temperature": 0.7,
+            "max_tokens": 1000
+        }
+        
+        response = requests.post(
+            "https://api.deepseek.com/v1/chat/completions",
+            headers=headers,
+            json=payload
+        )
+        
+        result = response.json()
+        
+        if response.status_code == 200:
+            analysis = result['choices'][0]['message']['content']
+            
+            # Save messages to database if session_id is provided
+            if session_id:
+                current_time = int(datetime.now().timestamp() * 1000)
+                
+                user_message = Message(
+                    id=str(uuid.uuid4()),
+                    session_id=session_id,
+                    device_id=device_id,
+                    content=prompt,
+                    role='user',
+                    timestamp=current_time,
+                    image_path=f"/uploads/{device_id}/images/{filename}"
+                )
+                
+                assistant_message = Message(
+                    id=str(uuid.uuid4()),
+                    session_id=session_id,
+                    device_id=device_id,
+                    content=analysis,
+                    role='assistant',
+                    timestamp=current_time + 1
+                )
+                
+                session = Session.query.filter_by(id=session_id).first()
+                if session:
+                    session.updated_at = current_time
+                    db.session.add_all([user_message, assistant_message])
+                    db.session.commit()
+            
+            return jsonify({
+                "status": "success",
+                "analysis": analysis,
+                "image_path": f"/uploads/{device_id}/images/{filename}"
+            })
+        else:
+            return jsonify({"error": "Failed to get image analysis", "details": result}), 500
+            
+    except Exception as e:
+        logger.error(f"Image analysis error: {str(e)}")
+        return jsonify({"error": "Image analysis failed", "details": str(e)}), 500
+
+# AI Chat Endpoint
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
         data = request.json
         message = data.get('message', '')
         session_id = data.get('session_id', '')
+        device_id = data.get('device_id', '')
         
         if not message:
             return jsonify({"error": "Message is required"}), 400
         
+        if not device_id:
+            return jsonify({"error": "Device ID is required"}), 400
+        
         if not session_id:
             new_session = Session(
                 id=str(uuid.uuid4()),
-                name="Percakapan Baru",  # Default name
+                device_id=device_id,
+                name="Percakapan Baru",
                 created_at=int(datetime.now().timestamp() * 1000),
                 updated_at=int(datetime.now().timestamp() * 1000)
             )
             db.session.add(new_session)
             db.session.commit()
             session_id = new_session.id
-        
 
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -459,7 +720,7 @@ def chat():
             "messages": [
                 {
                     "role": "system", 
-                    "content": """Anda adalah Asisten Pertanian PeTaniku yang ahli di bidang:
+                    "content":  """Anda adalah Asisten Pertanian PeTaniku yang ahli di bidang:
 - Pertanian dan perkebunan
 - Cuaca dan iklim untuk pertanian
 - Pengelolaan tanaman dan tanah
@@ -473,8 +734,7 @@ Bantu pengguna dengan:
 Gaya respons:
 - Gunakan bahasa sederhana dan praktis
 - Format jelas dengan paragraf terpisah
-- Hindari jargon teknis berlebihan"""
-                },
+- Hindari jargon teknis berlebihan"""                },
                 {"role": "user", "content": message}
             ],
             "temperature": 0.7,
@@ -491,37 +751,15 @@ Gaya respons:
         
         if response.status_code == 200:
             assistant_message = result['choices'][0]['message']['content']
-            
-            # Deteksi apakah respon mengandung penolakan (indikasi pertanyaan non-pertanian)
-            is_farming_related = not any(phrase in assistant_message.lower() for phrase in [
-                "maaf saya hanya dapat membantu",
-                "di luar topik saya",
-                "tidak bisa membantu"
-            ])
-            
             formatted_message = assistant_message.replace('###', '').replace('**', '*')
-            clean_tts_message = formatted_message.replace('*', '')
             
-            # Pastikan session masih ada
-            session = db.session.get(Session, session_id)
-            if not session:
-                # Jika session hilang, buat baru
-                new_session = Session(
-                    id=str(uuid.uuid4()),
-                    name="Percakapan Baru",
-                    created_at=int(datetime.now().timestamp() * 1000),
-                    updated_at=int(datetime.now().timestamp() * 1000)
-                )
-                db.session.add(new_session)
-                db.session.commit()
-                session_id = new_session.id
-                session = new_session
-            
+            # Save messages to database
             current_time = int(datetime.now().timestamp() * 1000)
             
             user_message = Message(
                 id=str(uuid.uuid4()),
                 session_id=session_id,
+                device_id=device_id,
                 content=message,
                 role='user',
                 timestamp=current_time
@@ -530,260 +768,75 @@ Gaya respons:
             assistant_message = Message(
                 id=str(uuid.uuid4()),
                 session_id=session_id,
+                device_id=device_id,
                 content=formatted_message,
                 role='assistant',
                 timestamp=current_time + 1
             )
             
-            session.updated_at = current_time
-            db.session.add_all([user_message, assistant_message])
-            db.session.commit()
+            session = Session.query.filter_by(id=session_id, device_id=device_id).first()
+            if session:
+                session.updated_at = current_time
+                db.session.add_all([user_message, assistant_message])
+                db.session.commit()
             
             return jsonify({
                 "response": formatted_message,
-                "clean_tts_message": clean_tts_message,
-                "is_farming_related": is_farming_related,
-                "session_id": session_id  # Kirim session_id ke frontend
+                "session_id": session_id
             })
             
     except Exception as e:
         logger.error(f"Chat error: {e}")
-        db.session.rollback()
         return jsonify({"error": "Terjadi kesalahan"}), 500
 
-@app.route('/uploads/audio/<filename>')
-def serve_audio(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
-
-def load_whisper_model():
+# Weather Endpoint
+@app.route('/api/weather', methods=['GET'])
+def get_weather():
     try:
-        model = whisper.load_model("base")
-        return model
-    except Exception as e:
-        logger.error(f"Failed to load Whisper model: {str(e)}")
-        return None
+        lat = request.args.get('lat', type=float)
+        lon = request.args.get('lon', type=float)
+        
+        if not lat or not lon:
+            return jsonify({
+                'error': 'Koordinat tidak valid',
+                'mock': True,
+                'location': 'Lokasi tidak diketahui'
+            }), 400
 
-app.whisper_model = load_whisper_model()
-
-@app.route('/api/upload', methods=['POST'])
-def upload_image():
-    if 'image' not in request.files:
-        return jsonify({"error": "No image file provided"}), 400
-
-    image_file = request.files['image']
-    if image_file.filename == '':
-        return jsonify({"error": "Empty filename"}), 400
+        weather_data = get_openweather_data(lat, lon)
         
-    try:
-        # Validasi ekstensi file
-        allowed_extensions = {'png', 'jpg', 'jpeg', 'gif'}
-        if '.' not in image_file.filename or image_file.filename.split('.')[-1].lower() not in allowed_extensions:
-            return jsonify({"error": "Invalid file type. Only PNG, JPG, JPEG, GIF are allowed"}), 400
-
-        # Simpan file
-        filename = secure_filename(f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}.{image_file.filename.split('.')[-1].lower()}")
-        filepath = os.path.join(UPLOAD_IMAGE_FOLDER, filename)
-        image_file.save(filepath)
-        
-        # Baca gambar dan konversi ke base64
-        with open(filepath, "rb") as img_file:
-            img_base64 = base64.b64encode(img_file.read()).decode("utf-8")
-        
-        # Dapatkan prompt dari form atau gunakan default
-        user_prompt = request.form.get('prompt', 'Analisis gambar tanaman ini. Identifikasi tanaman, kondisi kesehatan, dan berikan saran perawatan jika diperlukan.')
-        
-        # Siapkan payload untuk DeepSeek Vision
-        headers = {
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "model": "deepseek-vision",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "Anda adalah asisten pertanian PeTaniku yang ahli dalam analisis gambar tanaman. Berikan analisis mendetail tentang gambar yang diberikan."
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": user_prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}}
-                    ]
-                }
-            ],
-            "temperature": 0.7,
-            "max_tokens": 2000
-        }
-        
-        # Kirim ke API DeepSeek
-        response = requests.post(
-            "https://api.deepseek.com/v1/chat/completions",
-            headers=headers,
-            json=payload
-        )
-        
-        if response.status_code != 200:
-            logger.error(f"DeepSeek API error: {response.text}")
-            return jsonify({"error": "Failed to analyze image", "api_error": response.text}), 500
-            
-        result = response.json()
-        analysis = result['choices'][0]['message']['content']
-        
-        # Simpan ke database jika ada session_id
-        session_id = request.form.get('session_id')
-        if session_id:
-            try:
-                session = db.session.get(Session, session_id)
-                if session:
-                    current_time = int(datetime.now().timestamp() * 1000)
-                    
-                    # Simpan pesan gambar
-                    image_message = Message(
-                        id=str(uuid.uuid4()),
-                        session_id=session_id,
-                        content=f"(Gambar pertanian) {user_prompt}",
-                        role='user',
-                        timestamp=current_time,
-                        image_path=f"/uploads/images/{filename}"
-                    )
-                    
-                    # Simpan analisis
-                    analysis_message = Message(
-                        id=str(uuid.uuid4()),
-                        session_id=session_id,
-                        content=analysis,
-                        role='assistant',
-                        timestamp=current_time + 1
-                    )
-                    
-                    # Update session
-                    session.updated_at = current_time
-                    
-                    db.session.add_all([image_message, analysis_message])
-                    db.session.commit()
-            except Exception as e:
-                logger.error(f"Error saving to database: {e}")
-                db.session.rollback()
+        if not weather_data:
+            return jsonify({
+                'error': 'Gagal mengambil data cuaca',
+                'mock': True
+            }), 500
         
         return jsonify({
-            "status": "success",
-            "analysis": analysis,
-            "image_path": f"/uploads/images/{filename}",
-            "session_id": session_id
+            'temperature': weather_data['main']['temp'],
+            'condition': weather_data['weather'][0]['main'],
+            'description': weather_data['weather'][0]['description'],
+            'advice': get_farming_advice(weather_data['weather'][0]['main'])
         })
         
     except Exception as e:
-        logger.error(f"Image processing error: {str(e)}")
-        return jsonify({"error": "Image processing failed"}), 500
-@app.route('/api/vision', methods=['POST'])
-def analyze_image():
-    if 'image' not in request.files:
-        return jsonify({"error": "No image file provided"}), 400
-
-    try:
-        # Save uploaded file
-        image_file = request.files['image']
-        session_id = request.form.get('session_id', '')
-        
-        filename = secure_filename(f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}.jpg")
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        image_file.save(filepath)
-        
-        # Read image as base64
-        with open(filepath, "rb") as img_file:
-            img_base64 = base64.b64encode(img_file.read()).decode("utf-8")
-        
-        # Prepare analysis prompt
-        prompt = """
-        Anda adalah ahli pertanian PeTaniku. Analisis gambar ini secara detail:
-        1. Identifikasi tanaman (jenis, varietas jika memungkinkan)
-        2. Kondisi kesehatan (daun, batang, buah/bunga)
-        3. Gejala penyakit/hama (bercak, perubahan warna, dll)
-        4. Rekomendasi perawatan spesifik
-        
-        Format respon:
-        - **Identifikasi**: [jenis tanaman]
-        - **Kondisi**: [deskripsi]
-        - **Masalah**: [jika ada]
-        - **Rekomendasi**: [langkah perawatan]
-        """
-        
-        # Call DeepSeek Vision API
-        headers = {
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "model": "deepseek-vision",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": f"data:image/jpeg;base64,{img_base64}"}
-                    ]
-                }
-            ],
-            "temperature": 0.7,
-            "max_tokens": 2000
-        }
-        
-        response = requests.post(
-            "https://api.deepseek.com/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=30  # 30 seconds timeout
-        )
-        
-        response.raise_for_status()  # Will raise for 4XX/5XX status
-        result = response.json()
-        
+        logger.error(f"Error in weather endpoint: {e}")
         return jsonify({
-            "status": "success",
-            "analysis": result['choices'][0]['message']['content'],
-            "image_path": f"/uploads/images/{filename}"
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Image analysis error: {str(e)}")
-        return jsonify({
-            "error": "Gagal menganalisis gambar",
-            "details": str(e)
+            'error': str(e),
+            'mock': True
         }), 500
-# Serve uploaded images
-@app.route('/uploads/images/<filename>')
-def serve_image(filename):
-    return send_from_directory(UPLOAD_IMAGE_FOLDER, filename)
 
-def map_weather_condition(weather_main):
-    """Map OpenWeather conditions to our frontend conditions"""
-    weather_main = weather_main.lower()
-    
-    if any(x in weather_main for x in ['clear', 'sun']):
-        return 'sunny'
-    elif any(x in weather_main for x in ['cloud', 'fog', 'mist', 'haze']):
-        return 'cloudy'
-    elif any(x in weather_main for x in ['rain', 'drizzle', 'shower', 'thunder', 'storm']):
-        return 'rainy'
-    else:
-        return 'cloudy'  # Default
-
+# Helper functions
 def get_openweather_data(lat, lon):
-    """Fetch weather data from OpenWeather API"""
     try:
         url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={OPENWEATHER_API_KEY}&units=metric&lang=id"
         response = requests.get(url)
         response.raise_for_status()
         return response.json()
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         logger.error(f"OpenWeather API error: {e}")
         return None
 
 def get_farming_advice(weather_main):
-    """Get farming advice based on weather condition"""
     weather_main = weather_main.lower()
     
     if any(x in weather_main for x in ['clear', 'sun']):
@@ -796,67 +849,6 @@ def get_farming_advice(weather_main):
         return "Pastikan drainase lahan baik untuk mencegah genangan"
     else:
         return "Pantau kondisi tanaman secara berkala"
-# def get_farming_advice(weather_main):
-#     """Get farming advice based on weather condition"""
-#     weather_main = weather_main.lower()
-
-#     if any(x in weather_main for x in ['clear', 'sun']):
-#         return "Suitable for harvesting or drying crops"
-#     elif any(x in weather_main for x in ['cloud', 'fog', 'mist', 'haze']):
-#         return "Good for planting seedlings or spraying pesticides"
-#     elif any(x in weather_main for x in ['rain', 'drizzle', 'shower']):
-#         return "Avoid fertilizing and spraying pesticides"
-#     elif any(x in weather_main for x in ['thunder', 'storm']):
-#         return "Ensure good land drainage to prevent waterlogging"
-#     else:
-#         return "Monitor plant conditions regularly"
-
-def get_mock_weather_data():
-    """Return mock weather data for testing"""
-    return {
-        'temperature': 30.0,
-        'condition': 'sunny',
-        'description': 'Cerah',
-        'location': 'Jakarta',
-        'advice': 'Cocok untuk panen atau pengeringan hasil panen'
-    }
-
-def get_deepseek_response(prompt):
-    """Get response from DeepSeek API"""
-    try:
-        headers = {
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "model": "deepseek-chat",
-            "messages": [
-                # {"role": "system", "content": "Anda adalah asisten pertanian PeTaniku."},
-                {"role": "system", "content": "You are PeTaniku's farming assistant."},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 500
-            # "max_tokens": 1000
-        }
-        
-        response = requests.post(
-            "https://api.deepseek.com/v1/chat/completions",
-            headers=headers,
-            json=payload
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            return result['choices'][0]['message']['content']
-        else:
-            logger.error(f"DeepSeek API error: {response.text}")
-            return "Maaf, saya tidak bisa memberikan jawaban saat ini."
-            
-    except Exception as e:
-        logger.error(f"Error getting DeepSeek response: {e}")
-        return "Maaf, terjadi kesalahan dalam memproses permintaan Anda."
 
 if __name__ == '__main__':
     app.run()

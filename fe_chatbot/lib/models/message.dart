@@ -1,17 +1,18 @@
-import 'package:uuid/uuid.dart';
-
-enum MessageRole { user, assistant, system }
+enum MessageRole {
+  user,
+  assistant,
+}
 
 class ChatMessage {
   final String id;
   final String content;
-  final String? cleanContent; // Clean text without formatting for TTS
+  final String? cleanContent;
   final MessageRole role;
   final int timestamp;
   final String? imageUrl;
   final String? audioUrl;
   final bool isAudio;
-  
+
   ChatMessage({
     String? id,
     required this.content,
@@ -22,58 +23,45 @@ class ChatMessage {
     this.audioUrl,
     this.isAudio = false,
   }) : 
-    id = id ?? const Uuid().v4(),
-    timestamp = timestamp ?? DateTime.now().millisecondsSinceEpoch;
-  
+    this.id = id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+    this.timestamp = timestamp ?? DateTime.now().millisecondsSinceEpoch;
+
   factory ChatMessage.fromMap(Map<String, dynamic> map) {
     return ChatMessage(
-      id: map['id'],
-      content: map['content'],
+      id: map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      content: map['content'] ?? '',
       cleanContent: map['clean_content'],
-      role: _parseRole(map['role']),
-      timestamp: map['timestamp'],
+      role: map['role'] == 'user' ? MessageRole.user : MessageRole.assistant,
+      timestamp: map['timestamp'] ?? DateTime.now().millisecondsSinceEpoch,
       imageUrl: map['image_path'],
       audioUrl: map['audio_path'],
-      isAudio: map['audio_path'] != null,
+      isAudio: map['is_audio'] ?? false,
     );
   }
-  
-  Map<String, dynamic> toApiMap(String sessionId) {
+
+  Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'session_id': sessionId,
       'content': content,
-      'role': _roleToString(role),
+      'clean_content': cleanContent,
+      'role': role == MessageRole.user ? 'user' : 'assistant',
       'timestamp': timestamp,
       'image_path': imageUrl,
       'audio_path': audioUrl,
+      'is_audio': isAudio,
     };
   }
-  
-  static MessageRole _parseRole(String role) {
-    switch (role.toLowerCase()) {
-      case 'user':
-        return MessageRole.user;
-      case 'assistant':
-        return MessageRole.assistant;
-      case 'system':
-        return MessageRole.system;
-      default:
-        return MessageRole.user;
-    }
+
+  Map<String, dynamic> toApiMap(String sessionId) {
+    return {
+      'content': content,
+      'role': role == MessageRole.user ? 'user' : 'assistant',
+      'image_path': imageUrl,
+      'audio_path': audioUrl,
+      'device_id': '', // This will be filled by the API service
+    };
   }
-  
-  static String _roleToString(MessageRole role) {
-    switch (role) {
-      case MessageRole.user:
-        return 'user';
-      case MessageRole.assistant:
-        return 'assistant';
-      case MessageRole.system:
-        return 'system';
-    }
-  }
-  
+
   ChatMessage copyWith({
     String? id,
     String? content,
@@ -96,4 +84,3 @@ class ChatMessage {
     );
   }
 }
-

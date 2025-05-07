@@ -16,7 +16,7 @@ def flutterVersionCode = localProperties.getProperty('flutter.versionCode') ?: '
 def flutterVersionName = localProperties.getProperty('flutter.versionName') ?: '1.0'
 
 android {
-    namespace "com.example.fe_chatbot"
+    namespace "com.example.fe_chatbot.app"
     compileSdk 35
 
     compileOptions {
@@ -29,7 +29,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.example.fe_chatbot"
+        applicationId "com.example.fe_chatbot.app"
         minSdkVersion 24  // Updated from 21 to 24 to match flutter_sound requirements
         targetSdkVersion 35
         versionCode flutterVersionCode.toInteger()

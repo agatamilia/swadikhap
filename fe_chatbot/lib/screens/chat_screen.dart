@@ -99,10 +99,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final sessionProvider = Provider.of<SessionProvider>(context, listen: false);
     
     if (sessionProvider.currentSession != null) {
-      // chatProvider.sendMessage(text, sessionProvider.currentSession!.id, sessionProvider);
-      
-      // Dengan ini untuk template lokal:
-      chatProvider.sendTemplateMessage(text, sessionProvider.currentSession!.id, sessionProvider);
+      // Using sendMessage that sends to API
+      chatProvider.sendMessage(text, sessionProvider.currentSession!.id, sessionProvider);
     }
     
     _scrollToBottom();
@@ -208,7 +206,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       chatProvider.stopListening(sessionProvider.currentSession!.id, sessionProvider);
                     }
                   },
-                  backgroundColor: Colors.green[600]!,
                 ),
             ],
           ),
@@ -284,7 +281,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-  // Animasi titik-titik loading
+
   Widget _buildTypingIndicator() {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -302,7 +299,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // Widget animasi titik loading
   Widget _buildLoadingDots() {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -316,7 +312,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // Komponen dot animasi
   Widget _buildDot({required int delay}) {
     return AnimatedOpacity(
       opacity: 0.0,
@@ -358,7 +353,7 @@ class _ChatScreenState extends State<ChatScreen> {
           key: Key(message.id),
           direction: DismissDirection.endToStart,
           background: Container(
-            color:  Color(0xFFB71C1C),
+            color: const Color(0xFFB71C1C),
             alignment: Alignment.centerRight,
             padding: const EdgeInsets.only(right: 16),
             child: const Icon(Icons.delete, color: Colors.white),
@@ -447,7 +442,22 @@ class _ChatScreenState extends State<ChatScreen> {
                   size: 24,
                 ),
               ),
-              const SizedBox(width: 12),  
+              const SizedBox(width: 12),
+              
+              // Image picker button with camera icon
+              FloatingActionButton(
+                onPressed: chatProvider.isLoading 
+                    ? null 
+                    : () => chatProvider.pickImage(context),
+                mini: true,
+                backgroundColor: Colors.green[600],
+                child: const Icon(
+                  Icons.camera_alt,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
               
               Expanded(
                 child: Container(

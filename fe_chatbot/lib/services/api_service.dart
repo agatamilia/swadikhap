@@ -1,18 +1,18 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
 import '../config/api_config.dart';
 import '../models/weather_data.dart';
 import '../models/message.dart';
 import '../models/chat_session.dart';
-import 'package:http_parser/http_parser.dart';
+import 'device_service.dart';
 
 class ApiService {
   static final Dio _dio = Dio(
     BaseOptions(
       baseUrl: ApiConfig.baseUrl,
-      connectTimeout: ApiConfig.connectTimeout,
-      receiveTimeout: ApiConfig.receiveTimeout,
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(seconds: 30),
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
@@ -34,98 +34,32 @@ class ApiService {
         print('Response Data: ${response.data}');
         return handler.next(response);
       },
-      onError: (DioError e, handler) {
+      onError: (DioException e, handler) {
         _logError('DioInterceptor', e);
         return handler.next(e);
       },
     ));
   }
 
-  Future<Map<String, dynamic>> analyzeImage(File imageFile, String sessionId) async {
-  try {
-    final formData = FormData.fromMap({
-      'image': await MultipartFile.fromFile(
-        imageFile.path,
-        filename: 'plant_${DateTime.now().millisecondsSinceEpoch}.jpg',
-      ),
-      'session_id': sessionId,
-    });
-
-    final response = await _dio.post(
-      ApiConfig.visionEndpoint,
-      data: formData,
-      options: Options(
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        receiveTimeout: const Duration(seconds: 60),
-      ),
-    );
-
-    return response.data;
-  } on DioError catch (e) {
-    if (e.response != null) {
-      throw Exception('Server error: ${e.response?.data['error']}');
-    } else {
-      throw Exception('Network error: ${e.message}');
+  // Device registration
+  Future<void> registerDevice(String deviceId) async {
+    try {
+      await _dio.post(
+        ApiConfig.registerDeviceEndpoint,
+        data: {'device_id': deviceId},
+      );
+    } catch (e) {
+      print('Error registering device: $e');
+      // Continue even if registration fails
     }
-  } catch (e) {
-    throw Exception('Failed to analyze image: $e');
-  }
-}
-  Future<String> _uploadImageToServer(File imageFile, String sessionId) async {
-  try {
-    final formData = FormData.fromMap({
-      'image': await MultipartFile.fromFile(
-        imageFile.path,
-        filename: 'img_${DateTime.now().millisecondsSinceEpoch}.jpg',
-      ),
-      'session_id': sessionId,
-    });
-
-    final response = await _dio.post(
-      ApiConfig.uploadEndpoint,
-      data: formData,
-      options: Options(
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      ),
-    );
-
-    return response.data['image_path'];
-  } catch (e) {
-    _logError('_uploadImageToServer', e);
-    return imageFile.path; // Return local path if upload fails
-  }
-}
-
-  Future<Response> _requestWithRetry(RequestOptions options, {int retries = 2}) async {
-    DioError? lastError;
-    
-    for (int i = 0; i < retries; i++) {
-      try {
-        final response = await _dio.fetch(options);
-        return response;
-      } on DioError catch (e) {
-        lastError = e;
-        if (i < retries - 1) {
-          await Future.delayed(const Duration(seconds: 1));
-        }
-      }
-    }
-    
-    throw lastError!;
   }
 
   // Session management
-  Future<List<ChatSession>> getSessions() async {
+  Future<List<ChatSession>> getSessions(String deviceId) async {
     try {
-      final response = await _requestWithRetry(
-        RequestOptions(
-          method: 'GET',
-          path: ApiConfig.sessionEndpoint,
-        ),
+      final response = await _dio.get(
+        ApiConfig.sessionEndpoint,
+        queryParameters: {'device_id': deviceId},
       );
       return (response.data as List)
           .map((json) => ChatSession.fromMap(json))
@@ -136,14 +70,11 @@ class ApiService {
     }
   }
 
-  Future<ChatSession> createSession(String name) async {
+  Future<ChatSession> createSession(String name, String deviceId) async {
     try {
-      final response = await _requestWithRetry(
-        RequestOptions(
-          method: 'POST',
-          path: ApiConfig.sessionEndpoint,
-          data: {'name': name},
-        ),
+      final response = await _dio.post(
+        ApiConfig.sessionEndpoint,
+        data: {'name': name, 'device_id': deviceId},
       );
       return ChatSession.fromMap(response.data);
     } catch (e) {
@@ -154,12 +85,9 @@ class ApiService {
 
   Future<void> updateSession(ChatSession session) async {
     try {
-      await _requestWithRetry(
-        RequestOptions(
-          method: 'PUT',
-          path: '${ApiConfig.sessionEndpoint}/${session.id}',
-          data: {'name': session.name},
-        ),
+      await _dio.put(
+        '${ApiConfig.sessionEndpoint}/${session.id}',
+        data: session.toMap(),
       );
     } catch (e) {
       _logError('updateSession', e);
@@ -169,12 +97,7 @@ class ApiService {
 
   Future<void> deleteSession(String sessionId) async {
     try {
-      await _requestWithRetry(
-        RequestOptions(
-          method: 'DELETE',
-          path: '${ApiConfig.sessionEndpoint}/$sessionId',
-        ),
-      );
+      await _dio.delete('${ApiConfig.sessionEndpoint}/$sessionId');
     } catch (e) {
       _logError('deleteSession', e);
       rethrow;
@@ -184,11 +107,8 @@ class ApiService {
   // Message management
   Future<List<ChatMessage>> getMessages(String sessionId) async {
     try {
-      final response = await _requestWithRetry(
-        RequestOptions(
-          method: 'GET',
-          path: '${ApiConfig.sessionEndpoint}/$sessionId/messages',
-        ),
+      final response = await _dio.get(
+        '${ApiConfig.sessionEndpoint}/$sessionId/messages',
       );
       return (response.data as List)
           .map((json) => ChatMessage.fromMap(json))
@@ -201,12 +121,9 @@ class ApiService {
 
   Future<void> saveMessage(ChatMessage message, String sessionId) async {
     try {
-      await _requestWithRetry(
-        RequestOptions(
-          method: 'POST',
-          path: '${ApiConfig.sessionEndpoint}/$sessionId/messages',
-          data: message.toApiMap(sessionId),
-        ),
+      await _dio.post(
+        '${ApiConfig.sessionEndpoint}/$sessionId/messages',
+        data: message.toApiMap(sessionId),
       );
     } catch (e) {
       _logError('saveMessage', e);
@@ -216,11 +133,8 @@ class ApiService {
 
   Future<void> deleteMessage(String sessionId, String messageId) async {
     try {
-      await _requestWithRetry(
-        RequestOptions(
-          method: 'DELETE',
-          path: '${ApiConfig.sessionEndpoint}/$sessionId/messages/$messageId',
-        ),
+      await _dio.delete(
+        '${ApiConfig.sessionEndpoint}/$sessionId/messages/$messageId',
       );
     } catch (e) {
       _logError('deleteMessage', e);
@@ -230,11 +144,8 @@ class ApiService {
 
   Future<void> clearMessages(String sessionId) async {
     try {
-      await _requestWithRetry(
-        RequestOptions(
-          method: 'DELETE',
-          path: '${ApiConfig.sessionEndpoint}/$sessionId/messages',
-        ),
+      await _dio.delete(
+        '${ApiConfig.sessionEndpoint}/$sessionId/messages',
       );
     } catch (e) {
       _logError('clearMessages', e);
@@ -245,12 +156,9 @@ class ApiService {
   // Weather service
   Future<WeatherData> getWeather(double latitude, double longitude) async {
     try {
-      final response = await _requestWithRetry(
-        RequestOptions(
-          method: 'GET',
-          path: ApiConfig.weatherEndpoint,
-          queryParameters: {'lat': latitude, 'lon': longitude},
-        ),
+      final response = await _dio.get(
+        ApiConfig.weatherEndpoint,
+        queryParameters: {'lat': latitude, 'lon': longitude},
       );
       return WeatherData.fromJson(response.data);
     } catch (e) {
@@ -260,17 +168,15 @@ class ApiService {
   }
 
   // Chat service
-  Future<Map<String, dynamic>> sendMessage(String message, String sessionId) async {
+  Future<Map<String, dynamic>> sendMessage(String message, String sessionId, String deviceId) async {
     try {
-      final response = await _requestWithRetry(
-        RequestOptions(
-          method: 'POST',
-          path: ApiConfig.chatEndpoint,
-          data: {
-            'message': message,
-            'session_id': sessionId,
-          },
-        ),
+      final response = await _dio.post(
+        ApiConfig.chatEndpoint,
+        data: {
+          'message': message,
+          'session_id': sessionId,
+          'device_id': deviceId,
+        },
       );
       return response.data;
     } catch (e) {
@@ -280,15 +186,17 @@ class ApiService {
   }
 
   // Audio transcription with improved error handling
-  Future<Map<String, dynamic>> transcribeAudio(File audioFile, [String? sessionId]) async {
+  Future<Map<String, dynamic>> transcribeAudio(File audioFile, String sessionId) async {
     try {
+      final deviceId = await DeviceService().getDeviceId();
       final formData = FormData.fromMap({
         'audio': await MultipartFile.fromFile(
           audioFile.path,
           filename: 'recording_${DateTime.now().millisecondsSinceEpoch}.wav',
           contentType: MediaType('audio', 'wav'),
         ),
-        if (sessionId != null) 'session_id': sessionId,
+        'session_id': sessionId,
+        'device_id': deviceId,
       });
 
       final response = await _dio.post(
@@ -296,10 +204,9 @@ class ApiService {
         data: formData,
         options: Options(
           headers: {
-            ...ApiConfig.headers,
             'Content-Type': 'multipart/form-data',
           },
-          receiveTimeout: const Duration(seconds: 60), // Extended timeout for audio processing
+          receiveTimeout: const Duration(seconds: 60),
         ),
       );
 
@@ -323,38 +230,67 @@ class ApiService {
     }
   }
 
-  // File upload
-  Future<Map<String, dynamic>> uploadImage(File file, String sessionId) async {
+  // Image analysis
+  Future<Map<String, dynamic>> analyzeImage(File imageFile, String sessionId, String deviceId) async {
     try {
+      print('Analyzing image for session: $sessionId, device: $deviceId');
+      
       final formData = FormData.fromMap({
         'image': await MultipartFile.fromFile(
-          file.path,
-          filename: file.path.split('/').last,
-          contentType: MediaType('image', 'jpeg'),
+          imageFile.path,
+          filename: 'plant_${DateTime.now().millisecondsSinceEpoch}.jpg',
         ),
         'session_id': sessionId,
+        'device_id': deviceId,
+        'prompt': 'Analisis gambar tanaman ini dan berikan informasi tentang kondisinya.',
       });
+
+      print('Sending image analysis request to: ${ApiConfig.visionEndpoint}');
       
-      final response = await _requestWithRetry(
-        RequestOptions(
-          method: 'POST',
-          path: ApiConfig.uploadEndpoint,
-          data: formData,
+      final response = await _dio.post(
+        ApiConfig.visionEndpoint,
+        data: formData,
+        options: Options(
           headers: {
-            ...ApiConfig.headers,
             'Content-Type': 'multipart/form-data',
           },
+          receiveTimeout: const Duration(seconds: 60),
+          sendTimeout: const Duration(seconds: 60),
         ),
       );
-      return response.data;
+
+      print('Image analysis response status: ${response.statusCode}');
+      print('Image analysis response: ${response.data}');
+      
+      if (response.statusCode == 200) {
+        return response.data;
+      } else {
+        print('Image analysis failed with status ${response.statusCode}');
+        return {
+          'error': 'Image analysis failed with status ${response.statusCode}',
+          'analysis': 'Maaf, saya tidak dapat menganalisis gambar saat ini. Silakan coba lagi nanti.',
+          'image_path': null
+        };
+      }
+    } on DioException catch (e) {
+      _logError('analyzeImage', e);
+      return {
+        'error': 'Gagal menganalisis gambar: ${e.message}',
+        'analysis': 'Maaf, saya tidak dapat menganalisis gambar saat ini. Silakan coba lagi nanti.',
+        'image_path': null
+      };
     } catch (e) {
-      _logError('uploadImage', e);
-      rethrow;
+      _logError('analyzeImage', e);
+      return {
+        'error': 'Gagal menganalisis gambar: $e',
+        'analysis': 'Maaf, saya tidak dapat menganalisis gambar saat ini. Silakan coba lagi nanti.',
+        'image_path': null
+      };
     }
   }
 
   void _logError(String method, dynamic error) {
-    if (error is DioError) {
+    if (error is DioException) {
       print('''
 API Error in $method:
 - Type: ${error.type}
@@ -373,4 +309,3 @@ Error in $method:
     }
   }
 }
-

@@ -7,7 +7,7 @@ class VoiceInputOverlay extends StatelessWidget {
   const VoiceInputOverlay({
     Key? key,
     required this.onCancel,
-    required this.onFinish, Color? backgroundColor,
+    required this.onFinish,
   }) : super(key: key);
 
   @override
@@ -64,7 +64,7 @@ class VoiceInputOverlay extends StatelessWidget {
                   ElevatedButton(
                     onPressed: onFinish,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primary, // Green button color
+                      backgroundColor: Colors.green[600], // Changed from purple to green
                       foregroundColor: Colors.white,
                     ),
                     child: const Text("Done"),
@@ -116,7 +116,7 @@ class _PulsingMicState extends State<_PulsingMic> with SingleTickerProviderState
             width: 80 * _animation.value, // Pulsing effect only on the microphone icon
             height: 80 * _animation.value,
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.8), // Green background for mic
+              color: Colors.green[600], // Changed from purple to green
               shape: BoxShape.circle,
             ),
             child: const Icon(

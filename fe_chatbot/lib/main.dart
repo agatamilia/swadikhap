@@ -1,19 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:peTaniku/services/device_service.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart'; // Import the intl package
-import 'package:intl/date_symbol_data_local.dart'; // For locale initialization
+import 'package:intl/date_symbol_data_local.dart';
 import 'providers/session_provider.dart';
 import 'providers/chat_provider.dart';
 import 'screens/splash_screen.dart';
+import 'theme.dart';
 
 void main() async {
-  // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('id_ID', null);
 
-  // Initialize date formatting for Indonesian locale (or other as needed)
-  await initializeDateFormatting('id_ID', null); // Initialize Indonesian locale
+  // Get device ID before running app
+  final deviceService = DeviceService();
+  final deviceId = await deviceService.getDeviceId();
 
-  runApp(const MyApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => SessionProvider(deviceId)),
+        ChangeNotifierProvider(create: (_) => ChatProvider()),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -21,19 +31,11 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => SessionProvider()),
-        ChangeNotifierProvider(create: (_) => ChatProvider()),
-      ],
-      child: MaterialApp(
-        title: 'PeTaniku',
-        theme: ThemeData(
-          primarySwatch: Colors.green,
-        ),
-        home: const SplashScreen(),
-        debugShowCheckedModeBanner: false,
-      ),
+    return MaterialApp(
+      title: 'PeTaniku',
+      theme: appTheme,
+      home: const SplashScreen(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }

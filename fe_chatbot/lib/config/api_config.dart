@@ -6,9 +6,8 @@ class ApiConfig {
   static const bool useNgrok = true;
   static const bool isProduction = false;
   
-
   // Ngrok configuration (only used when useNgrok is true)
-  static const String ngrokSubdomain = '7a2c-125-164-21-104'; // Replace with your ngrok subdomain
+  static const String ngrokSubdomain = '9c04-2404-c0-2150-00-5bce-bf9f'; // Replace with your ngrok subdomain
   static const String ngrokRegion = 'in'; // Region code (us, eu, ap, au, sa, jp, in)
 
   // Server URLs
@@ -23,8 +22,6 @@ class ApiConfig {
 
   // Base URL getter with platform detection
   static String get baseUrl {
-
-    
     if (useNgrok) return 'https://$ngrokSubdomain.ngrok-free.app';
     
     if (kIsWeb) return localBaseUrl;
@@ -44,8 +41,16 @@ class ApiConfig {
   static String get weatherEndpoint => _buildUrl('/api/weather');
   static String get chatEndpoint => _buildUrl('/api/chat');
   static String get transcribeEndpoint => _buildUrl('/api/transcribe');
-  static String get uploadEndpoint => _buildUrl('/api/upload');
-  static String get visionEndpoint => '/api/vision';
+  static String get visionEndpoint => _buildUrl('/api/vision');
+  static String get deviceEndpoint => _buildUrl('/api/device');
+  static String get registerDeviceEndpoint => _buildUrl('/api/device');
+  static String get audioUploadEndpoint => _buildUrl('/api/upload/audio');
+  static String get imageUploadEndpoint => _buildUrl('/api/upload/image');
+  static String audioFileUrl(String deviceId, String filename) => 
+      '${baseUrl.endsWith('/') ? baseUrl : '$baseUrl/'}uploads/$deviceId/audio/$filename';
+  static String imageFileUrl(String deviceId, String filename) => 
+      '${baseUrl.endsWith('/') ? baseUrl : '$baseUrl/'}uploads/$deviceId/images/$filename';
+  
   // Request Headers
   static Map<String, String> get headers => {
     'Content-Type': 'application/json',

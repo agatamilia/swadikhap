@@ -35,8 +35,6 @@ dependencies:
   intl: ^0.18.1
   shared_preferences: ^2.2.0
   location: ^5.0.0
-  # geolocator: ^10.0.0
-  # geolocator_android: ^4.3.3
   geocoding: ^2.1.0
   permission_handler: ^11.0.1
   flutter_sound: ^9.2.13
@@ -52,7 +50,8 @@ dependencies:
   mime_type: ^1.0.0
   audioplayers: ^6.4.0
   record: ^4.1.0
-  video_player: ^2.8.0
+  device_info_plus: ^9.0.2
+
 
 dev_dependencies:
   flutter_test:
