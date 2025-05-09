@@ -35,7 +35,7 @@ class VoiceInputOverlay extends StatelessWidget {
               const _PulsingMic(), // Only the mic icon will pulse
               const SizedBox(height: 24),
               const Text(
-                "Listening...",
+                "Mendengarkan...",
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -43,7 +43,7 @@ class VoiceInputOverlay extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               const Text(
-                "Please speak clearly.",
+                "Silahkan bicara dengan jelas",
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.grey,
@@ -59,7 +59,7 @@ class VoiceInputOverlay extends StatelessWidget {
                       backgroundColor: Colors.grey[200],
                       foregroundColor: Colors.black,
                     ),
-                    child: const Text("Cancel"),
+                    child: const Text("Bata"),
                   ),
                   ElevatedButton(
                     onPressed: onFinish,
@@ -67,7 +67,7 @@ class VoiceInputOverlay extends StatelessWidget {
                       backgroundColor: Colors.green[600], // Changed from purple to green
                       foregroundColor: Colors.white,
                     ),
-                    child: const Text("Done"),
+                    child: const Text("Kirim"),
                   ),
                 ],
               ),

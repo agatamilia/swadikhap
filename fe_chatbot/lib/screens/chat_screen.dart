@@ -242,7 +242,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           const SizedBox(height: 24),
           Text(
-            "Welcome to PeTaniku!",
+            "Selamat Datang di PeTaniku!",
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
               color: Colors.green[800],
               fontWeight: FontWeight.bold,
@@ -262,7 +262,7 @@ class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(height: 20),
           ElevatedButton(
             onPressed: () {
-              _textController.text = "Hi, saya ingin bertanya";
+              _textController.text = "Halo, saya ingin bertanya tentang tanaman saya";
               _handleSubmitted(context, _textController.text);
             },
             style: ElevatedButton.styleFrom(

@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
-import 'api_service.dart';
+import 'package:peTaniku/services/api_service.dart';
+import 'package:peTaniku/services/api_service.dart' as apiService; 
 
 class ImageService {
   final ImagePicker _imagePicker = ImagePicker();
@@ -50,13 +51,13 @@ class ImageService {
     }
   }
 
-  Future<Map<String, dynamic>> analyzeImage(File imageFile, String sessionId, String deviceId) async {
+  Future<Map<String, dynamic>> analyzeImage(File imageFile, String sessionId, String deviceId, {String? prompt}) async {
     try {
       // First save the image locally
       final localPath = await saveImageLocally(imageFile, deviceId);
       
       // Then send to API for analysis
-      final response = await _apiService.analyzeImage(imageFile, sessionId, deviceId);
+      final response = await apiService.analyzeImage(imageFile, sessionId, deviceId);
       
       // If the API doesn't return an image path, use the local one
       if (!response.containsKey('image_path') || response['image_path'] == null) {

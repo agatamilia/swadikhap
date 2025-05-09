@@ -14,7 +14,6 @@ import '../services/permission_service.dart';
 import '../services/image_service.dart';
 import 'session_provider.dart';
 import '../services/tts_service.dart';
-// Fix the DeviceService issue by importing it
 import '../services/device_service.dart';
 
 class ChatProvider with ChangeNotifier {
@@ -141,21 +140,17 @@ class ChatProvider with ChangeNotifier {
   Future<void> sendMessage(String text, String sessionId, SessionProvider sessionProvider) async {
     if (text.isEmpty && !hasImagePending) return;
 
-    // If this is the first message, set session name
-    if (_messages.isEmpty) {
-      final sessionName = text.isNotEmpty 
-          ? (text.length > 30 ? '${text.substring(0, 30)}...' : text)
-          : 'Analisis Gambar';
-      try {
-        await sessionProvider.updateSessionName(sessionId, sessionName);
-      } catch (e) {
-        print('Failed to update session name: $e');
-      }
+    // Create new session if this is the first message
+    if (_messages.isEmpty && sessionId.isEmpty) {
+      final newSession = await sessionProvider.createSession(
+        text.isNotEmpty ? (text.length > 30 ? '${text.substring(0, 30)}...' : text) : 'Analisis Gambar'
+      );
+      sessionId = newSession.id;
     }
 
     // Process image if there's a pending image
     if (_pendingImage != null) {
-      await _processImage(sessionId);
+      await _processImage(sessionId, text); // Pass the text prompt along with the image
       return;
     }
     
@@ -186,7 +181,8 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  Future<void> _processImage(String sessionId) async {
+// Update the image processing method
+  Future<void> _processImage(String sessionId, String prompt) async {
     if (_pendingImage == null) return;
     
     _isLoading = true;
@@ -195,7 +191,7 @@ class ChatProvider with ChangeNotifier {
     try {
       // First, add the user message with the image
       final userMessage = ChatMessage(
-        content: "Analisis gambar tanaman ini",
+        content: prompt.isNotEmpty ? prompt : "Analisis gambar tanaman ini",
         role: MessageRole.user,
         imageUrl: _pendingImage!.path,
       );
@@ -209,9 +205,13 @@ class ChatProvider with ChangeNotifier {
         print('Failed to save user message with image: $e');
       }
       
-      // Then send the image for analysis
-      // Tambahkan device_id sebagai parameter ketiga
-      final response = await _imageService.analyzeImage(_pendingImage!, sessionId, _deviceId);
+      // Send image for analysis
+      final response = await _imageService.analyzeImage(
+        _pendingImage!, 
+        sessionId, 
+        _deviceId,
+        prompt: prompt.isNotEmpty ? prompt : null,
+      );
       
       if (response.containsKey('error')) {
         throw Exception(response['error']);
@@ -242,8 +242,7 @@ class ChatProvider with ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
-  }
-
+  }   
   String _getErrorMessage(dynamic error) {
     return "Terjadi kesalahan tak terduga. Silakan coba lagi.";
   }
@@ -424,24 +423,24 @@ class ChatProvider with ChangeNotifier {
   }
 
   Future<void> deleteMessage(String messageId, String sessionId) async {
-    _messages.removeWhere((message) => message.id == messageId);
-    notifyListeners();
-    
     try {
+      // First delete from server
       await _apiService.deleteMessage(sessionId, messageId);
+      
+      // Then delete locally
+      _messages.removeWhere((message) => message.id == messageId);
+      notifyListeners();
+      
     } catch (e) {
       print('Failed to delete message: $e');
+      // Show error to user
       _messages.add(ChatMessage(
-        content: 'Gagal menghapus pesan dari server. Pesan hanya dihapus secara lokal.',
+        content: 'Gagal menghapus pesan dari server. Silakan coba lagi.',
         role: MessageRole.assistant,
       ));
       notifyListeners();
     }
   }
-  
-  // Fix the toMap method by ensuring ChatMessage has a toMap method
-  // Add this method to the ChatMessage class in your models/message.dart file
-  // If you don't have access to edit that file, you can create a temporary map here:
   Future<void> saveMessageLocally(ChatMessage message, String sessionId) async {
     final prefs = await SharedPreferences.getInstance();
     final key = 'chat_${_deviceId}_$sessionId';

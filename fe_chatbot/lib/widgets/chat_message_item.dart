@@ -19,7 +19,7 @@ class ChatMessageItem extends StatelessWidget {
     required this.assistantColor,
     required this.textColor,
   }) : super(key: key);
-
+  
   @override
   Widget build(BuildContext context) {
     final isUser = message.role == MessageRole.user;
@@ -50,7 +50,7 @@ class ChatMessageItem extends StatelessWidget {
                       height: 32,
                       decoration: BoxDecoration(
                         color: isUser 
-                            ? Colors.green[600]!.withOpacity(0.2)
+                            ? Colors.green[100]!.withOpacity(0.2)
                             : Colors.green[100]!,
                         shape: BoxShape.circle,
                       ),
