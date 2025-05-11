@@ -7,22 +7,19 @@ import '../models/message.dart';
 class ChatMessageItem extends StatelessWidget {
   final ChatMessage message;
   final bool isTyping;
-  final Color userColor;
-  final Color assistantColor;
-  final Color textColor;
 
   const ChatMessageItem({
     Key? key,
     required this.message,
     this.isTyping = false,
-    required this.userColor,
-    required this.assistantColor,
-    required this.textColor,
   }) : super(key: key);
-  
+
   @override
   Widget build(BuildContext context) {
     final isUser = message.role == MessageRole.user;
+    final userColor = Colors.green[600]!;
+    final assistantColor = Colors.white;
+    final textColor = isUser ? Colors.white : Colors.black87;
     
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -31,10 +28,11 @@ class ChatMessageItem extends StatelessWidget {
           maxWidth: MediaQuery.of(context).size.width * 0.75,
         ),
         child: Card(
-          color: isUser ? Colors.green[600] : Colors.white, // User: green, Bot: white
+          color: isUser ? userColor : assistantColor,
           margin: const EdgeInsets.symmetric(vertical: 8),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
+            side: isUser ? BorderSide.none : BorderSide(color: Colors.grey.shade200),
           ),
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -50,7 +48,7 @@ class ChatMessageItem extends StatelessWidget {
                       height: 32,
                       decoration: BoxDecoration(
                         color: isUser 
-                            ? Colors.green[100]!.withOpacity(0.2)
+                            ? Colors.green[600]!.withOpacity(0.2)
                             : Colors.green[100]!,
                         shape: BoxShape.circle,
                       ),
@@ -71,7 +69,7 @@ class ChatMessageItem extends StatelessWidget {
                           if (isTyping)
                             _buildTypingIndicator()
                           else
-                            _buildMessageContent(),
+                            _buildMessageContent(textColor),
                         ],
                       ),
                     ),
@@ -85,7 +83,7 @@ class ChatMessageItem extends StatelessWidget {
     );
   }
 
-  Widget _buildMessageContent() {
+  Widget _buildMessageContent(Color textColor) {
     final isUser = message.role == MessageRole.user;
     
     if (message.imageUrl != null) {
@@ -150,14 +148,14 @@ class ChatMessageItem extends StatelessWidget {
             if (!isUser) 
               RichText(
                 text: TextSpan(
-                  style: TextStyle(color: isUser ? Colors.white : Colors.black), // User: white text, Bot: black text
+                  style: TextStyle(color: textColor),
                   children: _parseMarkdownText(message.content),
                 ),
               )
             else
               Text(
                 message.content,
-                style: const TextStyle(color: Colors.white), // User: white text
+                style: TextStyle(color: textColor),
               ),
         ],
       );
@@ -166,7 +164,7 @@ class ChatMessageItem extends StatelessWidget {
     if (!isUser) {
       return RichText(
         text: TextSpan(
-          style: const TextStyle(color: Colors.black), // Bot: black text
+          style: TextStyle(color: textColor),
           children: _parseBoldText(message.content),
         ),
       );
@@ -174,7 +172,7 @@ class ChatMessageItem extends StatelessWidget {
     
     return Text(
       message.content,
-      style: const TextStyle(color: Colors.white), // User: white text
+      style: TextStyle(color: textColor),
     );
   }
 
@@ -230,14 +228,12 @@ class ChatMessageItem extends StatelessWidget {
             text: parts[i],
             style: const TextStyle(
               fontWeight: FontWeight.bold,
-              color: Colors.black, // Bot: black text
             ),
           ),
         );
       } else if (parts[i].isNotEmpty) {
         spans.add(TextSpan(
           text: parts[i],
-          style: const TextStyle(color: Colors.black), // Bot: black text
         ));
       }
     }
@@ -245,7 +241,6 @@ class ChatMessageItem extends StatelessWidget {
     if (spans.isEmpty) {
       spans.add(TextSpan(
         text: text,
-        style: const TextStyle(color: Colors.black), // Bot: black text
       ));
     }
 

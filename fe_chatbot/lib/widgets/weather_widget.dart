@@ -1,234 +1,221 @@
 import 'package:flutter/material.dart';
-import 'package:location/location.dart' as loc;
-import '../services/api_service.dart';
-import '../services/location_service.dart';
+import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import '../models/weather_data.dart';
 
-class WeatherWidget extends StatefulWidget {
-  final Color backgroundColor;
-  final Color textColor;
+class WeatherWidget extends StatelessWidget {
+  final WeatherData? weatherData;
+  final String location;
+  final bool isLoading;
 
   const WeatherWidget({
     Key? key,
-    required this.backgroundColor,
-    required this.textColor,
+    required this.weatherData,
+    required this.location,
+    this.isLoading = false,
   }) : super(key: key);
 
   @override
-  State<WeatherWidget> createState() => _WeatherWidgetState();
-}
-
-class _WeatherWidgetState extends State<WeatherWidget> {
-  bool _isLoading = true;
-  bool _hasError = false;
-  String _errorMessage = '';
-  WeatherData? _weatherData;
-  String _locationName = 'Detecting location...';
-  final ApiService _apiService = ApiService();
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchWeatherData();
-  }
-
-  Future<void> _fetchWeatherData() async {
-    try {
-      setState(() {
-        _isLoading = true;
-        _hasError = false;
-      });
-
-      // Get current position using location package
-      final locationData = await LocationService.getCurrentPosition();
-      if (locationData == null || locationData.latitude == null || locationData.longitude == null) {
-        setState(() {
-          _isLoading = false;
-          _hasError = true;
-          _errorMessage = 'Tidak dapat mengakses lokasi';
-        });
-        return;
-      }
-
-      // Get place name
-      final placeName = await LocationService.getPlaceFromCoordinates(
-        locationData.latitude!,
-        locationData.longitude!,
-      );
-      
-      setState(() {
-        _locationName = placeName;
-      });
-
-      // Fetch weather data
-      try {
-        final weatherData = await _apiService.getWeather(
-          locationData.latitude!,
-          locationData.longitude!,
-        );
-        
-        setState(() {
-          _weatherData = weatherData;
-          _isLoading = false;
-        });
-        
-        print('Weather data loaded: ${weatherData.condition}');
-      } catch (e) {
-        print('Error fetching weather: $e');
-        setState(() {
-          _isLoading = false;
-          _hasError = true;
-          _errorMessage = 'Gagal memuat data cuaca: $e';
-        });
-      }
-    } catch (e) {
-      print('General weather error: $e');
-      setState(() {
-        _isLoading = false;
-        _hasError = true;
-        _errorMessage = 'Terjadi kesalahan: $e';
-      });
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
+    // Format date in Indonesian
+    final now = DateTime.now();
+    final dateFormat = DateFormat('EEEE, d MMMM yyyy', 'id_ID');
+    final formattedDate = dateFormat.format(now);
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: widget.backgroundColor,
-      child: _isLoading
-          ? _buildLoadingState()
-          : _hasError
-              ? _buildErrorState()
-              : _buildWeatherInfo(),
-    );
-  }
-
-  Widget _buildLoadingState() {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 8.0),
-        child: SizedBox(
-          height: 20,
-          width: 20,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
+        ],
+        border: Border.all(
+          color: Colors.green.shade100,
+          width: 1,
         ),
       ),
-    );
-  }
-
-  Widget _buildErrorState() {
-    return GestureDetector(
-      onTap: _fetchWeatherData,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline,
-              color: widget.textColor,
-              size: 16,
-            ),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                'Gagal memuat cuaca. Ketuk untuk mencoba lagi.',
-                style: TextStyle(
-                  color: widget.textColor,
-                  fontSize: 12,
+        padding: const EdgeInsets.all(12.0),
+        child: isLoading
+            ? const Center(
+                child: SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                  ),
                 ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Location and date
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.location_on,
+                        size: 16,
+                        color: Colors.green.shade700,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          location,
+                          style: TextStyle(
+                            fontSize: 16, // Increased font size
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green.shade800,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 20),
+                    child: Text(
+                      formattedDate,
+                      style: TextStyle(
+                        fontSize: 14, // Increased font size
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Weather info
+                  if (weatherData != null)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Temperature and icon
+                        Expanded(
+                          flex: 2,
+                          child: Row(
+                            children: [
+                              Text(
+                                '${weatherData!.temperature.round()}°C',
+                                style: const TextStyle(
+                                  fontSize: 28, // Increased font size
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              _getWeatherIcon(weatherData!.condition),
+                            ],
+                          ),
+                        ),
+                        
+                        // Weather advice
+                        Expanded(
+                          flex: 3,
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Colors.green.shade200,
+                                width: 1,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _getWeatherDescription(weatherData!.condition),
+                                  style: TextStyle(
+                                    fontSize: 16, // Increased font size
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green.shade800,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  weatherData!.advice,
+                                  style: TextStyle(
+                                    fontSize: 14, // Increased font size
+                                    color: Colors.green.shade800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
               ),
-            ),
-          ],
-        ),
       ),
-    );
-  }
-
-  Widget _buildWeatherInfo() {
-    if (_weatherData == null) {
-      return _buildErrorState();
-    }
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          children: [
-            _getWeatherIcon(_weatherData!.condition),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${_weatherData!.temperature.toStringAsFixed(1)}°C',
-                  style: TextStyle(
-                    color: widget.textColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-                Text(
-                  _locationName,
-                  style: TextStyle(
-                    color: widget.textColor.withOpacity(0.8),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        Flexible(
-          child: Text(
-            _weatherData!.advice,
-            style: TextStyle(
-              color: widget.textColor,
-              fontSize: 12,
-              fontStyle: FontStyle.italic,
-            ),
-            textAlign: TextAlign.right,
-            overflow: TextOverflow.ellipsis,
-            maxLines: 2,
-          ),
-        ),
-      ],
     );
   }
 
   Widget _getWeatherIcon(String condition) {
-    // Convert condition to lowercase for case-insensitive comparison
-    final lowerCondition = condition.toLowerCase();
-    
-    // Debug print to see what condition we're getting
-    print('Weather condition: $lowerCondition');
-    
     IconData iconData;
-    
-    if (lowerCondition.contains('clear') || lowerCondition.contains('sun')) {
+    Color color;
+
+    condition = condition.toLowerCase();
+
+    if (condition.contains('clear') || condition.contains('sun')) {
       iconData = Icons.wb_sunny;
-    } else if (lowerCondition.contains('cloud')) {
+      color = Colors.orange;
+    } else if (condition.contains('cloud')) {
       iconData = Icons.cloud;
-    } else if (lowerCondition.contains('rain') || lowerCondition.contains('drizzle')) {
+      color = Colors.grey;
+    } else if (condition.contains('rain') || condition.contains('drizzle')) {
       iconData = Icons.grain;
-    } else if (lowerCondition.contains('thunder') || lowerCondition.contains('storm')) {
+      color = Colors.blue;
+    } else if (condition.contains('thunder') || condition.contains('storm')) {
       iconData = Icons.flash_on;
-    } else if (lowerCondition.contains('snow')) {
+      color = Colors.amber;
+    } else if (condition.contains('snow')) {
       iconData = Icons.ac_unit;
-    } else if (lowerCondition.contains('mist') || lowerCondition.contains('fog') || lowerCondition.contains('haze')) {
+      color = Colors.lightBlue;
+    } else if (condition.contains('mist') || condition.contains('fog') || condition.contains('haze')) {
       iconData = Icons.cloud_queue;
+      color = Colors.blueGrey;
     } else {
-      iconData = Icons.wb_cloudy;  // Default icon
+      iconData = Icons.cloud;
+      color = Colors.grey;
     }
-    
+
     return Icon(
       iconData,
-      color: widget.textColor,
-      size: 24,
+      color: color,
+      size: 32, // Increased icon size
     );
+  }
+  
+  String _getWeatherDescription(String condition) {
+    condition = condition.toLowerCase();
+    
+    if (condition.contains('clear') || condition.contains('sun')) {
+      return 'Cerah';
+    } else if (condition.contains('cloud') && !condition.contains('broken')) {
+      return 'Berawan';
+    } else if (condition.contains('broken') || condition.contains('overcast')) {
+      return 'Mendung';
+    } else if (condition.contains('drizzle')) {
+      return 'Hujan rintik-rintik';
+    } else if (condition.contains('rain') && !condition.contains('heavy')) {
+      return 'Hujan';
+    } else if (condition.contains('heavy') && condition.contains('rain')) {
+      return 'Hujan deras';
+    } else if (condition.contains('thunder') || condition.contains('storm')) {
+      return 'Badai petir';
+    } else if (condition.contains('snow')) {
+      return 'Bersalju';
+    } else if (condition.contains('mist') || condition.contains('fog') || condition.contains('haze')) {
+      return 'Berkabut';
+    } else {
+      return condition;
+    }
   }
 }

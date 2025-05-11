@@ -5,10 +5,10 @@ import '../providers/chat_provider.dart';
 import '../providers/session_provider.dart';
 import '../services/permission_service.dart';
 import '../widgets/chat_message_item.dart';
-import '../widgets/voice_input_overlay.dart';
 import '../widgets/weather_widget.dart';
 import '../widgets/suggestion_chips.dart';
 import '../models/message.dart';
+import '../services/location_service.dart';
 import 'session_list_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -18,18 +18,45 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateMixin {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final LocationService _locationService = LocationService();
   bool _permissionsChecked = false;
+  
+  // Voice recording variables
+  bool _isRecording = false;
+  bool _isRecordingLocked = false;
+  bool _isRecordingPaused = false;
+  double _dragVertical = 0;
+  double _dragHorizontal = 0;
+  String _recordingTime = "0:00";
+  
+  // Animation controller for recording pulse
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
+    
+    // Initialize animation controller
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(_pulseController);
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkPermissions();
       _loadSessionMessages();
+      _locationService.getCurrentLocation();
     });
+  }
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadSessionMessages();
   }
 
   Future<void> _loadSessionMessages() async {
@@ -75,6 +102,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _textController.dispose();
     _scrollController.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -110,20 +138,40 @@ class _ChatScreenState extends State<ChatScreen> {
     _textController.text = suggestion;
   }
 
-  Future<void> _openDeepSeekAI() async {
-    const url = 'https://deepseek.ai';
-    if (await canLaunch(url)) {
-      await launch(url);
-    } else {
-      print('Could not launch $url');
-    }
-  }
-
   void _showSessionList() {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => const SessionListScreen(),
+      ),
+    );
+  }
+
+  void _showImageOptions() {
+    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+    
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.camera_alt, color: Colors.green),
+            title: const Text('Ambil Foto'),
+            onTap: () {
+              Navigator.pop(context);
+              chatProvider.pickImageFromCamera(context);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_library, color: Colors.green),
+            title: const Text('Pilih dari Galeri'),
+            onTap: () {
+              Navigator.pop(context);
+              chatProvider.pickImage(context);
+            },
+          ),
+        ],
       ),
     );
   }
@@ -153,14 +201,83 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // Start recording
+  void _startRecording(ChatProvider chatProvider) {
+    setState(() {
+      _isRecording = true;
+      _dragVertical = 0;
+      _dragHorizontal = 0;
+    });
+    chatProvider.startRecordingHold(context);
+  }
+
+  // Handle recording lock
+  void _lockRecording(ChatProvider chatProvider) {
+    setState(() {
+      _isRecordingLocked = true;
+    });
+    chatProvider.lockRecording();
+  }
+
+  // Handle recording pause/resume
+  void _togglePauseRecording(ChatProvider chatProvider) {
+    if (_isRecordingPaused) {
+      setState(() {
+        _isRecordingPaused = false;
+      });
+      chatProvider.resumeRecording();
+    } else {
+      setState(() {
+        _isRecordingPaused = true;
+      });
+      chatProvider.pauseRecording();
+    }
+  }
+
+  // Cancel recording
+  void _cancelRecording(ChatProvider chatProvider) {
+    setState(() {
+      _isRecording = false;
+      _isRecordingLocked = false;
+      _isRecordingPaused = false;
+      _dragVertical = 0;
+      _dragHorizontal = 0;
+    });
+    chatProvider.cancelRecordingHold();
+  }
+
+  // Finish and send recording
+  void _finishRecording(ChatProvider chatProvider, SessionProvider sessionProvider) {
+    setState(() {
+      _isRecording = false;
+      _isRecordingLocked = false;
+      _isRecordingPaused = false;
+      _dragVertical = 0;
+      _dragHorizontal = 0;
+    });
+    
+    if (sessionProvider.currentSession != null) {
+      chatProvider.stopRecordingHold(
+        sessionProvider.currentSession!.id,
+        sessionProvider,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final sessionProvider = Provider.of<SessionProvider>(context);
+    final deviceId = sessionProvider.currentSession?.deviceId ?? '';
     
     return Consumer<ChatProvider>(
       builder: (context, chatProvider, child) {
         if (chatProvider.messages.isNotEmpty) {
           _scrollToBottom();
+        }
+        
+        // Update recording time from provider
+        if (_isRecording) {
+          _recordingTime = chatProvider.recordingTime;
         }
         
         return Scaffold(
@@ -186,10 +303,13 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               Column(
                 children: [
+                  // Weather widget
                   WeatherWidget(
-                    backgroundColor: Colors.green[600]!,
-                    textColor: Colors.white,
+                    weatherData: _locationService.weatherData,
+                    location: _locationService.placemark?.locality ?? 'Lokasi Anda',
+                    isLoading: _locationService.isLoading,
                   ),
+                  
                   Expanded(
                     child: chatProvider.messages.isEmpty
                         ? _buildWelcomeScreen()
@@ -198,20 +318,254 @@ class _ChatScreenState extends State<ChatScreen> {
                   _buildInputArea(chatProvider, sessionProvider),
                 ],
               ),
-              if (chatProvider.isListening) 
-                VoiceInputOverlay(
-                  onCancel: () => chatProvider.cancelListening(),
-                  onFinish: () {
-                    if (sessionProvider.currentSession != null) {
-                      chatProvider.stopListening(sessionProvider.currentSession!.id, sessionProvider);
-                    }
-                  },
-                ),
+              
+              // Recording overlay - only shown when recording
+              if (_isRecording)
+                _buildRecordingOverlay(chatProvider, sessionProvider),
             ],
           ),
         );
       },
     );
+  }
+
+  Widget _buildRecordingOverlay(ChatProvider chatProvider, SessionProvider sessionProvider) {
+    // Calculate opacity for lock indicator based on drag
+    final lockOpacity = _dragVertical < 0 
+        ? ((_dragVertical.abs() / 100) * 0.8 + 0.2).clamp(0.2, 1.0)
+        : 0.2;
+        
+    // Calculate opacity for cancel indicator based on drag
+    final cancelOpacity = _dragHorizontal > 0 
+        ? ((_dragHorizontal / 100) * 0.8 + 0.2).clamp(0.2, 1.0)
+        : 0.2;
+    
+    if (_isRecordingLocked) {
+      // Locked recording UI
+      return Container(
+        color: Colors.black.withOpacity(0.7),
+        child: SafeArea(
+          child: Center(
+            child: Container(
+              padding: EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.black45,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Rekaman Terkunci',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    _recordingTime,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 20),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.delete, color: Colors.white, size: 30),
+                        onPressed: () => _cancelRecording(chatProvider),
+                        tooltip: 'Batalkan rekaman',
+                      ),
+                      SizedBox(width: 30),
+                      IconButton(
+                        icon: Icon(
+                          _isRecordingPaused ? Icons.play_arrow : Icons.pause,
+                          color: Colors.red,
+                          size: 40,
+                        ),
+                        onPressed: () => _togglePauseRecording(chatProvider),
+                        tooltip: _isRecordingPaused ? 'Lanjutkan rekaman' : 'Jeda rekaman',
+                      ),
+                      SizedBox(width: 30),
+                      IconButton(
+                        icon: Icon(Icons.send, color: Colors.green, size: 30),
+                        onPressed: () => _finishRecording(chatProvider, sessionProvider),
+                        tooltip: 'Kirim rekaman',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    } else {
+      // Regular recording UI with drag gestures
+      return GestureDetector(
+        onVerticalDragUpdate: (details) {
+          setState(() {
+            _dragVertical += details.delta.dy;
+            // Limit to only up swipe for lock
+            if (_dragVertical > 0) _dragVertical = 0;
+            
+            // Check if we should lock
+            if (_dragVertical < -100) {
+              _lockRecording(chatProvider);
+            }
+          });
+        },
+        onVerticalDragEnd: (_) {
+          setState(() {
+            _dragVertical = 0;
+          });
+        },
+        onHorizontalDragUpdate: (details) {
+          setState(() {
+            _dragHorizontal += details.delta.dx;
+            // Limit to only right swipe for cancel
+            if (_dragHorizontal < 0) _dragHorizontal = 0;
+            
+            // Check if we should cancel
+            if (_dragHorizontal > 100) {
+              _cancelRecording(chatProvider);
+            }
+          });
+        },
+        onHorizontalDragEnd: (_) {
+          setState(() {
+            _dragHorizontal = 0;
+          });
+        },
+        child: Container(
+          color: Colors.black.withOpacity(0.7),
+          child: SafeArea(
+            child: Stack(
+              children: [
+                // Lock indicator (top)
+                Positioned(
+                  top: 100 + _dragVertical,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.lock,
+                          color: Colors.white.withOpacity(lockOpacity),
+                          size: 40,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Geser ke atas untuk mengunci',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(lockOpacity),
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                
+                // Cancel indicator (right)
+                Positioned(
+                  right: 100 - _dragHorizontal,
+                  top: MediaQuery.of(context).size.height / 2,
+                  child: Row(
+                    children: [
+                      Text(
+                        'Geser ke kanan untuk membatalkan',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(cancelOpacity),
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.cancel,
+                        color: Colors.white.withOpacity(cancelOpacity),
+                        size: 40,
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // Recording time and waveform
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.black45,
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.mic,
+                              color: Colors.red,
+                              size: 24,
+                            ),
+                            SizedBox(width: 10),
+                            Text(
+                              _recordingTime,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(width: 10),
+                            // Simple waveform visualization
+                            Container(
+                              width: 150,
+                              height: 30,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                children: List.generate(
+                                  15,
+                                  (index) => AnimatedContainer(
+                                    duration: Duration(milliseconds: 300),
+                                    width: 4,
+                                    height: (index % 3 == 0) 
+                                        ? 20.0 * _pulseAnimation.value
+                                        : 10.0 * _pulseAnimation.value,
+                                    decoration: BoxDecoration(
+                                      color: Colors.green,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 20),
+                      Text(
+                        'Lepas untuk mengirim',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   Widget _buildWelcomeScreen() {
@@ -242,7 +596,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           const SizedBox(height: 24),
           Text(
-            "Selamat Datang di PeTaniku!",
+            "Welcome to PeTaniku!",
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
               color: Colors.green[800],
               fontWeight: FontWeight.bold,
@@ -262,7 +616,7 @@ class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(height: 20),
           ElevatedButton(
             onPressed: () {
-              _textController.text = "Halo, saya ingin bertanya tentang tanaman saya";
+              _textController.text = "Hi, saya ingin bertanya";
               _handleSubmitted(context, _textController.text);
             },
             style: ElevatedButton.styleFrom(
@@ -282,52 +636,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildTypingIndicator() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          "Asisten sedang mengetik",
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontSize: 14,
-          ),
-        ),
-        const SizedBox(width: 8),
-        _buildLoadingDots(),
-      ],
-    );
-  }
-
-  Widget _buildLoadingDots() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _buildDot(delay: 0),
-        const SizedBox(width: 4),
-        _buildDot(delay: 200),
-        const SizedBox(width: 4),
-        _buildDot(delay: 400),
-      ],
-    );
-  }
-
-  Widget _buildDot({required int delay}) {
-    return AnimatedOpacity(
-      opacity: 0.0,
-      duration: const Duration(milliseconds: 800),
-      curve: Curves.easeInOut,
-      child: Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(
-          color: Colors.green[600],
-          shape: BoxShape.circle,
-        ),
-      ),
-    );
-  }
-
   Widget _buildChatList(ChatProvider chatProvider, SessionProvider sessionProvider) {
     return ListView.builder(
       controller: _scrollController,
@@ -341,75 +649,21 @@ class _ChatScreenState extends State<ChatScreen> {
               role: MessageRole.assistant,
             ),
             isTyping: true,
-            userColor: Colors.green[600]!,
-            assistantColor: Colors.green[100]!,
-            textColor: Colors.white,
           );
         }
         
         final message = chatProvider.messages[index];
         
-        return Dismissible(
-          key: Key(message.id),
-          direction: DismissDirection.endToStart,
-          background: Container(
-            color: const Color(0xFFB71C1C),
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 16),
-            child: const Icon(Icons.delete, color: Colors.white),
-          ),
-          confirmDismiss: (direction) async {
-            return await showDialog(
-              context: context,
-              builder: (BuildContext context) {
-                return AlertDialog(
-                  title: Text(
-                    'Hapus Pesan',
-                    style: TextStyle(color: Colors.green[800]),
-                  ),
-                  content: Text(
-                    'Apakah Anda yakin ingin menghapus pesan ini?',
-                    style: TextStyle(color: Colors.green[700]),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      child: Text(
-                        'Batal',
-                        style: TextStyle(color: Colors.green[700]),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(true),
-                      child: Text(
-                        'Hapus',
-                        style: TextStyle(color: Colors.green[700]),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            );
-          },
-          onDismissed: (direction) {
-            if (sessionProvider.currentSession != null) {
-              chatProvider.deleteMessage(message.id, sessionProvider.currentSession!.id);
-            }
-          },
-          child: ChatMessageItem(
-            message: message,
-            userColor: message.role == MessageRole.user 
-                ? Colors.green[600]! 
-                : Colors.green[100]!,
-            assistantColor: Colors.green[100]!,
-            textColor: Colors.black87,
-          ),
+        return ChatMessageItem(
+          message: message,
         );
       },
     );
   }
 
   Widget _buildInputArea(ChatProvider chatProvider, SessionProvider sessionProvider) {
+    final bool hasText = _textController.text.isNotEmpty;
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -426,29 +680,11 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Row(
             children: [
+              // Image picker button
               FloatingActionButton(
-                onPressed: chatProvider.isLoading 
+                onPressed: chatProvider.isLoading || _isRecording
                     ? null 
-                    : chatProvider.isListening 
-                        ? () => chatProvider.stopListening(sessionProvider.currentSession?.id ?? '', sessionProvider) 
-                        : () => chatProvider.startListening(context),
-                mini: true,
-                backgroundColor: chatProvider.isListening 
-                    ? Colors.green[800]
-                    : Colors.green[600],
-                child: Icon(
-                  chatProvider.isListening ? Icons.mic_off : Icons.mic,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              
-              // Image picker button with camera icon
-              FloatingActionButton(
-                onPressed: chatProvider.isLoading 
-                    ? null 
-                    : () => chatProvider.pickImage(context),
+                    : () => _showImageOptions(),
                 mini: true,
                 backgroundColor: Colors.green[600],
                 child: const Icon(
@@ -489,23 +725,42 @@ class _ChatScreenState extends State<ChatScreen> {
                           : null,
                     ),
                     style: TextStyle(color: Colors.green[800]),
-                    enabled: !chatProvider.isListening && !chatProvider.isLoading,
+                    enabled: !_isRecording && !chatProvider.isLoading,
                     onSubmitted: (text) => _handleSubmitted(context, text),
+                    onChanged: (text) {
+                      // Force rebuild to update send/voice button
+                      setState(() {});
+                    },
                   ),
                 ),
               ),
               const SizedBox(width: 12),  
               
-              FloatingActionButton(
-                onPressed: chatProvider.isLoading 
-                    ? null 
-                    : () => _handleSubmitted(context, _textController.text),
-                mini: true,
-                backgroundColor: Colors.green[600],
-                child: const Icon(
-                  Icons.send,
-                  color: Colors.white,
-                  size: 24,
+              // Dynamic button: Voice when empty, Send when has text
+              GestureDetector(
+                onLongPressStart: (details) {
+                  if (!hasText && !chatProvider.isLoading && !_isRecording) {
+                    _startRecording(chatProvider);
+                  }
+                },
+                onLongPressEnd: (details) {
+                  if (_isRecording && !_isRecordingLocked) {
+                    _finishRecording(chatProvider, sessionProvider);
+                  }
+                },
+                child: FloatingActionButton(
+                  onPressed: chatProvider.isLoading || _isRecording
+                      ? null 
+                      : hasText
+                          ? () => _handleSubmitted(context, _textController.text)
+                          : () => _startRecording(chatProvider),
+                  mini: true,
+                  backgroundColor: Colors.green[600],
+                  child: Icon(
+                    hasText ? Icons.send : Icons.mic,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
               ),
             ],

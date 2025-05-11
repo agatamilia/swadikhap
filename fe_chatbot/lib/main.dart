@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:peTaniku/services/device_service.dart';
+import 'package:peTaniku/services/location_service.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'services/device_service.dart';
+import 'services/api_service.dart'; // Add this import
 import 'providers/session_provider.dart';
 import 'providers/chat_provider.dart';
 import 'screens/splash_screen.dart';
@@ -11,15 +13,25 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('id_ID', null);
 
-  // Get device ID before running app
+  // Initialize services
   final deviceService = DeviceService();
+  await deviceService.initialize();
+  final apiService = ApiService(); // Create ApiService instance
   final deviceId = await deviceService.getDeviceId();
+  
+  print('Device ID: $deviceId');
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => SessionProvider(deviceId)),
+        ChangeNotifierProvider(
+          create: (_) => SessionProvider(
+            apiService: apiService,
+            deviceService: deviceService,
+          ),
+        ),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
+        ChangeNotifierProvider(create: (_) => LocationService()),
       ],
       child: const MyApp(),
     ),

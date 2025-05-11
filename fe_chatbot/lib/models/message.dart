@@ -39,6 +39,19 @@ class ChatMessage {
     );
   }
 
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    return ChatMessage(
+      id: json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      content: json['content'] ?? '',
+      cleanContent: json['cleanContent'],
+      role: json['role'] == 'user' ? MessageRole.user : MessageRole.assistant,
+      timestamp: json['timestamp'] ?? DateTime.now().millisecondsSinceEpoch,
+      imageUrl: json['imageUrl'],
+      audioUrl: json['audioUrl'],
+      isAudio: json['isAudio'] ?? false,
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -49,6 +62,19 @@ class ChatMessage {
       'image_path': imageUrl,
       'audio_path': audioUrl,
       'is_audio': isAudio,
+    };
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'content': content,
+      'cleanContent': cleanContent,
+      'role': role == MessageRole.user ? 'user' : 'assistant',
+      'timestamp': timestamp,
+      'imageUrl': imageUrl,
+      'audioUrl': audioUrl,
+      'isAudio': isAudio,
     };
   }
 
