@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 
 class SuggestionChips extends StatelessWidget {
   final Function(String) onSuggestionSelected;
+  final TextStyle? chipTextStyle;  // Add this line
   
   const SuggestionChips({
     Key? key,
     required this.onSuggestionSelected,
+    this.chipTextStyle,  // Add this line
   }) : super(key: key);
 
   @override
@@ -20,26 +22,21 @@ class SuggestionChips extends StatelessWidget {
   }
   
   List<Widget> _buildSuggestions() {
-    // final suggestions = [
-    //   'Teknik menanam padi',
-    //   'Bagaimana mengatasi hama?',
-    //   'Prediksi cuaca minggu ini',
-    //   'Pupuk terbaik untuk jagung',
-    //   'Musim tanam terbaik',
-    // ];
     final suggestions = [
-      'Rice planting techniques',
-      'How to deal with pests?',
-      'Weather forecast for this week',
-      'Best fertilizer for corn',
-      'Best planting season',
+      'Teknik menanam padi',
+      'Bagaimana mengatasi hama?',
+      'Prediksi cuaca minggu ini',
+      'Pupuk terbaik untuk jagung',
+      'Musim tanam terbaik',
     ];
-    
     return suggestions.map((suggestion) {
       return Padding(
-        padding: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.only(right: 10),
         child: ActionChip(
-          label: Text(suggestion),
+          label: Text(
+            suggestion,
+            style: chipTextStyle,  // Apply the style here
+          ),
           onPressed: () => onSuggestionSelected(suggestion),
           backgroundColor: Colors.green[50],
         ),
@@ -47,4 +44,3 @@ class SuggestionChips extends StatelessWidget {
     }).toList();
   }
 }
-

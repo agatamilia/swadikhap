@@ -59,129 +59,141 @@ class ApiService {
   }
 
   // Session management
-  Future<List<ChatSession>> getSessions() async {
+// Session endpoints
+  Future<List<ChatSession>> getSessions(String deviceId) async {
     try {
-      final response = await _requestWithRetry(
-        RequestOptions(
-          method: 'GET',
-          path: ApiConfig.sessionEndpoint,
-        ),
+      final response = await _dio.get(
+        '${ApiConfig.baseUrl}/api/sessions',
+        queryParameters: {'device_id': deviceId},
       );
-      return (response.data as List)
-          .map((json) => ChatSession.fromMap(json))
-          .toList();
+      
+      final List<dynamic> sessionsData = response.data;
+      return sessionsData.map((data) => ChatSession.fromMap(data)).toList();
     } catch (e) {
-      _logError('getSessions', e);
-      rethrow;
+      print('Error getting sessions: $e');
+      return [];
     }
   }
 
-  Future<ChatSession> createSession(String name) async {
+  Future<ChatSession> createSession(String name, String deviceId) async {
     try {
-      final response = await _requestWithRetry(
-        RequestOptions(
-          method: 'POST',
-          path: ApiConfig.sessionEndpoint,
-          data: {'name': name},
-        ),
+      final response = await _dio.post(
+        '${ApiConfig.baseUrl}/api/sessions',
+        data: {
+          'device_id': deviceId,
+          'name': name,
+        },
       );
       return ChatSession.fromMap(response.data);
     } catch (e) {
-      _logError('createSession', e);
+      print('Error creating session: $e');
+      // Create a local session if API fails
+      final now = DateTime.now().millisecondsSinceEpoch;
+      return ChatSession(
+        id: 'local_$now',
+        name: name,
+        createdAt: now,
+        updatedAt: now,
+        deviceId: deviceId,
+      );
+    }
+  }
+
+  Future<ChatSession> getSessionById(String sessionId, String deviceId) async {
+    try {
+      final response = await _dio.get(
+        '${ApiConfig.baseUrl}/api/sessions/$sessionId',
+        queryParameters: {'device_id': deviceId},
+      );
+      return ChatSession.fromMap(response.data);
+    } catch (e) {
+      print('Error getting session by ID: $e');
       rethrow;
     }
   }
 
-  Future<void> updateSession(ChatSession session) async {
+  Future<void> updateSession(ChatSession session, String deviceId) async {
     try {
-      await _requestWithRetry(
-        RequestOptions(
-          method: 'PUT',
-          path: '${ApiConfig.sessionEndpoint}/${session.id}',
-          data: {'name': session.name},
-        ),
+      await _dio.put(
+        '${ApiConfig.baseUrl}/api/sessions/${session.id}',
+        data: {
+          'device_id': deviceId,
+          'name': session.name,
+        },
       );
     } catch (e) {
-      _logError('updateSession', e);
-      rethrow;
+      print('Error updating session: $e');
+      // Continue with local update even if API fails
     }
   }
 
-  Future<void> deleteSession(String sessionId) async {
+  Future<void> deleteSession(String sessionId, String deviceId) async {
     try {
-      await _requestWithRetry(
-        RequestOptions(
-          method: 'DELETE',
-          path: '${ApiConfig.sessionEndpoint}/$sessionId',
-        ),
+      await _dio.delete(
+        '${ApiConfig.baseUrl}/api/sessions/$sessionId',
+        queryParameters: {'device_id': deviceId},
       );
     } catch (e) {
-      _logError('deleteSession', e);
-      rethrow;
+      print('Error deleting session: $e');
+      // Continue with local deletion even if API fails
     }
   }
 
-  // Message management
-  Future<List<ChatMessage>> getMessages(String sessionId) async {
+  // Message endpoints
+  Future<List<ChatMessage>> getMessages(String sessionId, String deviceId) async {
     try {
-      final response = await _requestWithRetry(
-        RequestOptions(
-          method: 'GET',
-          path: '${ApiConfig.sessionEndpoint}/$sessionId/messages',
-        ),
+      final response = await _dio.get(
+        '${ApiConfig.baseUrl}/api/sessions/$sessionId/messages',
+        queryParameters: {'device_id': deviceId},
       );
-      return (response.data as List)
-          .map((json) => ChatMessage.fromMap(json))
-          .toList();
+      
+      final List<dynamic> messagesData = response.data;
+      return messagesData.map((data) => ChatMessage.fromMap(data)).toList();
     } catch (e) {
-      _logError('getMessages', e);
-      rethrow;
+      print('Error getting messages: $e');
+      return [];
     }
   }
 
-  Future<void> saveMessage(ChatMessage message, String sessionId) async {
+  Future<Map<String, dynamic>> saveMessage(ChatMessage message, String sessionId, String deviceId) async {
     try {
-      await _requestWithRetry(
-        RequestOptions(
-          method: 'POST',
-          path: '${ApiConfig.sessionEndpoint}/$sessionId/messages',
-          data: message.toApiMap(sessionId),
-        ),
+      final response = await _dio.post(
+        '${ApiConfig.baseUrl}/api/sessions/$sessionId/messages',
+        data: {
+          'content': message.content,
+          'role': message.role == MessageRole.user ? 'user' : 'assistant',
+          'image_path': message.imageUrl,
+          'audio_path': message.audioUrl,
+          'device_id': deviceId,
+        },
       );
+      return response.data;
     } catch (e) {
-      _logError('saveMessage', e);
-      rethrow;
+      print('Error saving message: $e');
+      // Return a mock response if API fails
+      return {
+        'id': DateTime.now().millisecondsSinceEpoch.toString(),
+        'session_id': sessionId,
+        'content': message.content,
+        'role': message.role == MessageRole.user ? 'user' : 'assistant',
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'image_path': message.imageUrl,
+        'audio_path': message.audioUrl
+      };
     }
   }
 
-  Future<void> deleteMessage(String sessionId, String messageId) async {
+  Future<void> clearMessages(String sessionId, String deviceId) async {
     try {
-      await _requestWithRetry(
-        RequestOptions(
-          method: 'DELETE',
-          path: '${ApiConfig.sessionEndpoint}/$sessionId/messages/$messageId',
-        ),
-      );
-    } catch (e) {
-      _logError('deleteMessage', e);
-      rethrow;
-    }
-  }
-
-  Future<void> clearMessages(String sessionId) async {
-    try {
-      await _requestWithRetry(
-        RequestOptions(
-          method: 'DELETE',
-          path: '${ApiConfig.sessionEndpoint}/$sessionId/messages',
-        ),
+      await _dio.delete(
+        '${ApiConfig.baseUrl}/api/sessions/$sessionId/messages',
+        queryParameters: {'device_id': deviceId},
       );
     } catch (e) {
-      _logError('clearMessages', e);
-      rethrow;
+      print('Error clearing messages: $e');
+      // Continue even if API fails
     }
   }
-
   // Weather service
   Future<WeatherData> getWeather(double latitude, double longitude) async {
     try {
@@ -313,4 +325,3 @@ Error in $method:
     }
   }
 }
-

@@ -23,13 +23,13 @@ class AudioService {
       final isGranted = status.isGranted;
       
       if (!isGranted) {
-        throw Exception('Microphone permission not granted');
+        throw Exception('Izin mikrofon tidak diberikan');
       }
       
       _isRecorderInitialized = true;
-      debugPrint('Recorder initialized successfully');
+      debugPrint('Perekam berhasil diinisialisasi');
     } catch (e) {
-      debugPrint('Error initializing recorder: $e');
+      debugPrint('Kesalahan saat menginisialisasi perekam: $e');
       rethrow;
     }
   }
@@ -39,9 +39,9 @@ class AudioService {
     
     try {
       _isPlayerInitialized = true;
-      debugPrint('Player initialized successfully');
+      debugPrint('Pemutar berhasil diinisialisasi');
     } catch (e) {
-      debugPrint('Error initializing player: $e');
+      debugPrint('Kesalahan saat menginisialisasi pemutar: $e');
       rethrow;
     }
   }
@@ -63,15 +63,15 @@ class AudioService {
       // Start recording with the correct API for record package
       await _audioRecorder.start(
         path: _recordingPath,
-        encoder: AudioEncoder.wav,  // WAV format works best with Whisper
+        encoder: AudioEncoder.wav,  // Format WAV works best with Whisper
         bitRate: 128000,
         samplingRate: 16000,  // 16kHz is optimal for Whisper
       );
       
-      debugPrint('Recording started at: $_recordingPath');
+      debugPrint('Perekaman dimulai di: $_recordingPath');
       return _recordingPath;
     } catch (e) {
-      debugPrint('Error starting recording: $e');
+      debugPrint('Kesalahan saat memulai perekaman: $e');
       _recordingPath = null;
       rethrow;
     }
@@ -84,26 +84,26 @@ class AudioService {
     
     try {
       await _audioRecorder.stop();
-      debugPrint('Recording stopped');
+      debugPrint('Perekaman dihentikan');
       
       // Verify the file exists and has content
       if (_recordingPath != null) {
         final file = File(_recordingPath!);
         if (await file.exists()) {
           final fileSize = await file.length();
-          debugPrint('Recording file size: $fileSize bytes');
+          debugPrint('Ukuran file perekaman: $fileSize bytes');
           
           if (fileSize < 100) {
-            throw Exception('Recording file is too small, possibly corrupted');
+            throw Exception('File perekaman terlalu kecil, mungkin rusak');
           }
         } else {
-          throw Exception('Recording file does not exist');
+          throw Exception('File perekaman tidak ada');
         }
       }
       
       return _recordingPath;
     } catch (e) {
-      debugPrint('Error stopping recording: $e');
+      debugPrint('Kesalahan saat menghentikan perekaman: $e');
       rethrow;
     }
   }
@@ -119,7 +119,7 @@ class AudioService {
     try {
       await _player.play(DeviceFileSource(_recordingPath!));
     } catch (e) {
-      debugPrint('Error playing recording: $e');
+      debugPrint('Kesalahan saat memutar rekaman: $e');
     }
   }
 
@@ -128,4 +128,3 @@ class AudioService {
     await _player.dispose();
   }
 }
-

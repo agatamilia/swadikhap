@@ -50,21 +50,20 @@ final ThemeData appTheme = ThemeData(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     ),
   ),
-  textTheme: const TextTheme(
+  textTheme: TextTheme(
     headlineMedium: TextStyle(
       fontWeight: FontWeight.bold,
-      fontSize: 20,
+      fontSize: 24,  // Perbesar ukuran font untuk headline
     ),
     bodyLarge: TextStyle(
-      fontSize: 16,
+      fontSize: 20,  // Perbesar ukuran font untuk teks tubuh utama
     ),
     bodyMedium: TextStyle(
-      fontSize: 14,
+      fontSize: 18,  // Perbesar ukuran font untuk teks tubuh dengan ukuran lebih kecil
     ),
     labelLarge: TextStyle(
       fontWeight: FontWeight.w500,
-      fontSize: 14,
+      fontSize: 18,  // Perbesar ukuran font untuk label
     ),
   ),
 );
-

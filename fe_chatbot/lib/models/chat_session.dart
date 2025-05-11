@@ -3,12 +3,14 @@ class ChatSession {
   final String name;
   final int createdAt;
   final int updatedAt;
+  final String deviceId;
   
   ChatSession({
     required this.id,
     required this.name,
     required this.createdAt,
     required this.updatedAt,
+    required this.deviceId,
   });
   
   factory ChatSession.fromMap(Map<String, dynamic> map) {
@@ -17,6 +19,7 @@ class ChatSession {
       name: map['name'],
       createdAt: map['created_at'],
       updatedAt: map['updated_at'],
+      deviceId: map['device_id'],
     );
   }
   
@@ -26,6 +29,7 @@ class ChatSession {
       'name': name,
       'created_at': createdAt,
       'updated_at': updatedAt,
+      'device_id': deviceId,
     };
   }
   
@@ -34,13 +38,14 @@ class ChatSession {
     String? name,
     int? createdAt,
     int? updatedAt,
+    String? deviceId,
   }) {
     return ChatSession(
       id: id ?? this.id,
       name: name ?? this.name,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      deviceId: deviceId ?? this.deviceId,
     );
   }
 }
-

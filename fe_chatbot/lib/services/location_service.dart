@@ -1,9 +1,13 @@
 import 'package:location/location.dart' as loc;
 import 'package:geocoding/geocoding.dart';
+import 'package:flutter/material.dart';
 
-class LocationService {
+class LocationService extends ChangeNotifier {
   static final loc.Location _location = loc.Location();
-  
+  loc.LocationData? _currentLocation;
+
+  loc.LocationData? get currentLocation => _currentLocation;
+
   // Get current position with timeout handling
   static Future<loc.LocationData?> getCurrentPosition() async {
     try {
@@ -48,40 +52,37 @@ class LocationService {
       'speed_accuracy': 0.0,
       'heading': 0.0,
       'time': DateTime.now().millisecondsSinceEpoch.toDouble(),
-      // Removed isMocked as it's not part of LocationData
     });
   }
 
-static Future<String> getPlaceFromCoordinates(double latitude, double longitude) async {
-  try {
-    List<Placemark> placemarks = await placemarkFromCoordinates(latitude, longitude);
-    
-    if (placemarks.isEmpty) return 'Bogor';
+  static Future<String> getPlaceFromCoordinates(double latitude, double longitude) async {
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(latitude, longitude);
 
-    final place = placemarks.first;
-    
-    // Find the most specific available location name
-    final locationName = [
-      // place.street,
-      place.subLocality,    // Kelurahan/Desa
-      place.locality,       // Kecamatan
-      // place.subAdministrativeArea, // Kabupaten
-    ].firstWhere(
-      (name) => name != null && name.isNotEmpty,
-      orElse: () => 'Bogor'
-    );
-    
-    return locationName ?? 'Bogor'; // Ensure we always return a String
-  } catch (e) {
-    print('Geocoding error: $e');
-    return 'Bogor';
+      if (placemarks.isEmpty) return 'Bogor';
+
+      final place = placemarks.first;
+
+      final locationName = [
+        place.subLocality,
+        place.locality,
+      ].firstWhere(
+        (name) => name != null && name.isNotEmpty,
+        orElse: () => 'Bogor',
+      );
+
+      return locationName ?? 'Bogor'; // Ensure we always return a String
+    } catch (e) {
+      print('Geocoding error: $e');
+      return 'Bogor';
+    }
   }
-}
+
   // New method to get complete location
   static Future<Map<String, dynamic>> getCompleteLocation() async {
     final position = await getCurrentPosition() ?? getMockPosition();
     final placeName = await getPlaceFromCoordinates(
-      position.latitude ?? -6.243, 
+      position.latitude ?? -6.243,
       position.longitude ?? 105.8593585
     );
 
@@ -95,5 +96,11 @@ static Future<String> getPlaceFromCoordinates(double latitude, double longitude)
       'isMocked': position == getMockPosition(), // Manual mock check
       'timestamp': DateTime.now().toIso8601String(),
     };
+  }
+
+  // Method to update location and notify listeners
+  Future<void> updateLocation() async {
+    _currentLocation = await getCurrentPosition();
+    notifyListeners(); // Notify listeners when location changes
   }
 }

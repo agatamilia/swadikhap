@@ -1,56 +1,53 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:intl/date_symbol_data_local.dart';
+import 'package:peTaniku/services/location_service.dart';
 import 'package:provider/provider.dart';
-import 'screens/chat_screen.dart';
-import 'theme.dart';
-import 'providers/chat_provider.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'services/device_service.dart';
+import 'services/api_service.dart'; // Add this import
 import 'providers/session_provider.dart';
-import 'services/permission_service.dart';
+import 'providers/chat_provider.dart';
+import 'screens/splash_screen.dart';
+import 'theme.dart';
 
 void main() async {
-  // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Set preferred orientations
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
-
-  // Initialize date formatting for Indonesian locale
   await initializeDateFormatting('id_ID', null);
 
-  // Request permissions on app start
-  Map<String, bool> permissions = await PermissionService.requestAllPermissions();
-
-  // Log permission status
-  permissions.forEach((key, value) {
-    print('Permission $key: ${value ? 'granted' : 'denied'}');
-  });
+  // Initialize services
+  final deviceService = DeviceService();
+  await deviceService.initialize();
+  final apiService = ApiService(); // Create ApiService instance
+  final deviceId = await deviceService.getDeviceId();
+  
+  print('Device ID: $deviceId');
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (context) => ChatProvider()),
-        ChangeNotifierProvider(create: (context) => SessionProvider()),
+        ChangeNotifierProvider(
+          create: (_) => SessionProvider(
+            apiService: apiService,
+            deviceService: deviceService,
+          ),
+        ),
+        ChangeNotifierProvider(create: (_) => ChatProvider()),
+        ChangeNotifierProvider(create: (_) => LocationService()),
       ],
-      child: const PeTanikuApp(),
+      child: const MyApp(),
     ),
   );
 }
 
-class PeTanikuApp extends StatelessWidget {
-  const PeTanikuApp({Key? key}) : super(key: key);
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'PeTaniku',
       theme: appTheme,
+      home: const SplashScreen(),
       debugShowCheckedModeBanner: false,
-      home: const ChatScreen(), // Make ChatScreen the main page
     );
   }
 }
-

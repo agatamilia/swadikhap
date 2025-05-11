@@ -26,7 +26,6 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    // Check permissions after the widget is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkPermissions();
       _loadSessionMessages();
@@ -45,7 +44,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _checkPermissions() async {
     if (_permissionsChecked) return;
     
-    // Check location permission for weather widget
     bool hasLocationPermission = await PermissionService.hasLocationPermission();
     if (!hasLocationPermission && mounted) {
       bool granted = await PermissionService.requestLocationPermission();
@@ -54,7 +52,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
     
-    // Check microphone permission for voice input
     bool hasMicrophonePermission = await PermissionService.hasMicrophonePermission();
     if (!hasMicrophonePermission && mounted) {
       bool granted = await PermissionService.requestMicrophonePermission();
@@ -63,7 +60,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
     
-    // Check storage permission for audio files
     bool hasStoragePermission = await PermissionService.hasStoragePermission();
     if (!hasStoragePermission && mounted) {
       bool granted = await PermissionService.requestStoragePermission();
@@ -99,7 +95,6 @@ class _ChatScreenState extends State<ChatScreen> {
     
     _textController.clear();
     
-    // Send message using provider
     final chatProvider = Provider.of<ChatProvider>(context, listen: false);
     final sessionProvider = Provider.of<SessionProvider>(context, listen: false);
     
@@ -118,8 +113,6 @@ class _ChatScreenState extends State<ChatScreen> {
     const url = 'https://deepseek.ai';
     if (await canLaunch(url)) {
       await launch(url);
-    } else {
-      print('Could not launch $url');
     }
   }
 
@@ -139,14 +132,12 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Icon(
             chatProvider.useVoiceOutput ? Icons.volume_up : Icons.volume_off,
-            size: 20,
+            size: 24, 
             color: Colors.white,
           ),
           Switch(
             value: chatProvider.useVoiceOutput,
-            onChanged: (value) {
-              chatProvider.toggleVoiceOutput();
-            },
+            onChanged: (value) => chatProvider.toggleVoiceOutput(),
             activeColor: Colors.white,
             activeTrackColor: Colors.green[300],
           ),
@@ -161,17 +152,20 @@ class _ChatScreenState extends State<ChatScreen> {
     
     return Consumer<ChatProvider>(
       builder: (context, chatProvider, child) {
-        // Scroll to bottom when new messages arrive
         if (chatProvider.messages.isNotEmpty) {
           _scrollToBottom();
         }
         
         return Scaffold(
+          backgroundColor: const Color.fromARGB(213, 232, 245, 233),
           appBar: AppBar(
-            title: Text(sessionProvider.currentSession?.name ?? 'PeTaniku'),
+            title: Text(
+              sessionProvider.currentSession?.name ?? 'PeTaniku',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontSize: 22, color: Colors.white),
+            ),
             actions: [
               IconButton(
-                icon: const Icon(Icons.history),
+                icon: const Icon(Icons.history, size: 28), 
                 onPressed: _showSessionList,
                 tooltip: 'Riwayat Chat',
               ),
@@ -182,22 +176,18 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               Column(
                 children: [
-                  // Weather widget
                   const WeatherWidget(),
                   
-                  // Chat messages
                   Expanded(
                     child: chatProvider.messages.isEmpty
                         ? _buildWelcomeScreen()
                         : _buildChatList(chatProvider, sessionProvider),
                   ),
                   
-                  // Input area
                   _buildInputArea(chatProvider, sessionProvider),
                 ],
               ),
               
-              // Voice input overlay
               if (chatProvider.isListening) 
                 VoiceInputOverlay(
                   onCancel: () => chatProvider.cancelListening(),
@@ -214,14 +204,14 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-Widget _buildWelcomeScreen() {
+  Widget _buildWelcomeScreen() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 100,  // Changed from inline-size
-            height: 100, // Changed from block-size
+            width: 120, 
+            height: 120,
             decoration: BoxDecoration(
               color: Colors.green[100],
               shape: BoxShape.circle,
@@ -229,25 +219,28 @@ Widget _buildWelcomeScreen() {
             child: const Center(
               child: Text(
                 "🌾",
-                style: TextStyle(fontSize: 48),
+                style: TextStyle(fontSize: 60), 
               ),
             ),
           ),
-          const SizedBox(height: 16),  // Changed from block-size
+          const SizedBox(height: 20),
           Text(
-            // "Selamat datang di PeTaniku!",
-            "Welcome to PeTaniku!",
-            style: Theme.of(context).textTheme.headlineMedium,
+            "Selamat datang di PeTaniku!",
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              fontSize: 26, 
+              fontWeight: FontWeight.bold,
+              color: Colors.white
+            ),
           ),
-          const SizedBox(height: 8),  // Changed from block-size
+          const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Text(
-              // "Tanyakan tentang teknik bertani, cuaca, atau hama tanaman",
-              "Ask about farming techniques, weather, or crop pests",
+              "Tanyakan tentang teknik bertani, cuaca, atau hama tanaman",
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Colors.grey[600],
+                fontSize: 20, 
               ),
             ),
           ),
@@ -274,7 +267,6 @@ Widget _buildWelcomeScreen() {
         
         final message = chatProvider.messages[index];
         
-        // Check if this is a non-farming related response with DeepSeek link
         if (message.role == MessageRole.assistant && 
             message.content.contains("https://deepseek.ai")) {
           return Column(
@@ -287,38 +279,42 @@ Widget _buildWelcomeScreen() {
                   color: Colors.red,
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.only(right: 16),
-                  child: const Icon(Icons.delete, color: Colors.white),
+                  child: const Icon(Icons.delete, color: Colors.white, size: 28), 
                 ),
                 confirmDismiss: (direction) async {
                   return await showDialog(
                     context: context,
                     builder: (BuildContext context) {
                       return AlertDialog(
-                        // title: const Text('Hapus Pesan'),
-                        // content: const Text('Apakah Anda yakin ingin menghapus pesan ini?'),
-                        title: const Text('Delete Message'),
-                        content: const Text('Are you sure you want to delete this message?'),
+                        title: const Text(
+                          'Hapus Pesan',
+                          style: TextStyle(fontSize: 22), 
+                        ),
+                        content: const Text(
+                          'Apakah Anda yakin ingin menghapus pesan ini?',
+                          style: TextStyle(fontSize: 18), 
+                        ),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.of(context).pop(false),
-                            // child: const Text('Batal'),
-                            child: const Text('Cancel'),
+                            child: const Text(
+                              'Batal',
+                              style: TextStyle(fontSize: 18), 
+                            ),
                           ),
                           TextButton(
                             onPressed: () => Navigator.of(context).pop(true),
-                            // child: const Text('Hapus'),
-                            child: const Text('Delete'),
+                            child: const Text(
+                              'Hapus',
+                              style: TextStyle(fontSize: 18), 
+                            ),
                           ),
                         ],
                       );
                     },
                   );
                 },
-                onDismissed: (direction) {
-                  if (sessionProvider.currentSession != null) {
-                    chatProvider.deleteMessage(message.id, sessionProvider.currentSession!.id);
-                  }
-                },
+                
                 child: ChatMessageItem(message: message),
               ),
               if (message.content.contains("https://deepseek.ai"))
@@ -329,9 +325,10 @@ Widget _buildWelcomeScreen() {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
+                      textStyle: const TextStyle(fontSize: 18), 
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     ),
-                    // child: const Text("Buka DeepSeek AI"),
-                    child: const Text("Open DeepSeek AI"),
+                    child: const Text("Buka DeepSeek AI"),
                   ),
                 ),
             ],
@@ -345,38 +342,41 @@ Widget _buildWelcomeScreen() {
             color: Colors.red,
             alignment: Alignment.centerRight,
             padding: const EdgeInsets.only(right: 16),
-            child: const Icon(Icons.delete, color: Colors.white),
+            child: const Icon(Icons.delete, color: Colors.white, size: 28), 
           ),
           confirmDismiss: (direction) async {
             return await showDialog(
               context: context,
               builder: (BuildContext context) {
                 return AlertDialog(
-                  // title: const Text('Hapus Pesan'),
-                  // content: const Text('Apakah Anda yakin ingin menghapus pesan ini?'),
-                  title: const Text('Delete Message'),
-                  content: const Text('Are you sure you want to delete this message?'),
+                  title: const Text(
+                    'Hapus Pesan',
+                    style: TextStyle(fontSize: 22), 
+                  ),
+                  content: const Text(
+                    'Apakah Anda yakin ingin menghapus pesan ini?',
+                    style: TextStyle(fontSize: 18), 
+                  ),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(false),
-                      // child: const Text('Batal'),
-                      child: const Text('Cancel'),
+                      child: const Text(
+                        'Batal',
+                        style: TextStyle(fontSize: 18), 
+                      ),
                     ),
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(true),
-                      // child: const Text('Hapus'),
-                      child: const Text('Delete'),
+                      child: const Text(
+                        'Hapus',
+                        style: TextStyle(fontSize: 18), 
+                      ),
                     ),
                   ],
                 );
               },
             );
-          },
-          onDismissed: (direction) {
-            if (sessionProvider.currentSession != null) {
-              chatProvider.deleteMessage(message.id, sessionProvider.currentSession!.id);
-            }
-          },
+          },          
           child: ChatMessageItem(message: message),
         );
       },
@@ -413,31 +413,27 @@ Widget _buildWelcomeScreen() {
                 child: Icon(
                   chatProvider.isListening ? Icons.mic_off : Icons.mic,
                   color: Colors.white,
+                  size: 28, 
                 ),
               ),
-              const SizedBox(width: 8),  // Changed from inline-size
+              const SizedBox(width: 12), 
               
+
               Expanded(
                 child: TextField(
                   controller: _textController,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 18), 
                   decoration: InputDecoration(
                     hintText: chatProvider.hasImagePending 
-                        // ? "Ketik pertanyaan tentang gambar ini..." 
-                        // : "Tanyakan sesuatu tentang pertanian...",
-                        ? "Type a question about this image..."
-                        : "Ask something about agriculture...",
-                    // suffixIcon: IconButton(
-                    //   icon: const Icon(Icons.image),
-                    //   onPressed: chatProvider.isLoading 
-                    //       ? null 
-                    //       : () => chatProvider.pickImage(context),
-                    // ),
+                        ? "Ketik pertanyaan tentang gambar ini..." 
+                        : "Tanyakan sesuatu tentang pertanian...",
+                    hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 18), 
                   ),
                   enabled: !chatProvider.isListening && !chatProvider.isLoading,
                   onSubmitted: (text) => _handleSubmitted(context, text),
                 ),
               ),
-              const SizedBox(width: 8),  // Changed from inline-size
+              const SizedBox(width: 12), 
               
               FloatingActionButton(
                 onPressed: chatProvider.isLoading 
@@ -448,14 +444,16 @@ Widget _buildWelcomeScreen() {
                 child: const Icon(
                   Icons.send,
                   color: Colors.white,
+                  size: 28, 
                 ),
               ),
             ],
           ),
           
-          const SizedBox(height: 12),  // Changed from block-size
+          const SizedBox(height: 16), 
           SuggestionChips(
             onSuggestionSelected: _onSuggestionSelected,
+            chipTextStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 18), 
           ),
         ],
       ),
