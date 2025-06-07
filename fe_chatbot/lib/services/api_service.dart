@@ -57,9 +57,55 @@ class ApiService {
     
     throw lastError!;
   }
+  
+  Future<Map<String, dynamic>> transcribeAudio(
+    File audioFile, 
+    String sessionId,
+    String deviceId,
+  ) async {
+    try {
+      final formData = FormData.fromMap({
+        'audio': await MultipartFile.fromFile(
+          audioFile.path,
+          filename: 'recording_${DateTime.now().millisecondsSinceEpoch}.wav',
+          contentType: MediaType('audio', 'wav'),
+        ),
+        'session_id': sessionId,
+        'device_id': deviceId,
+      });
 
-  // Session management
-// Session endpoints
+      final response = await _dio.post(
+        ApiConfig.transcribeEndpoint,
+        data: formData,
+        options: Options(
+          headers: {
+            ...ApiConfig.headers,
+            'Content-Type': 'multipart/form-data',
+          },
+          receiveTimeout: const Duration(seconds: 60),
+        ),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Audio transcription failed with status ${response.statusCode}');
+      }
+
+      return response.data;
+    } on DioException catch (e) {
+      _logError('transcribeAudio', e);
+      if (e.response?.data != null && e.response?.data is Map) {
+        final errorData = e.response?.data as Map;
+        if (errorData.containsKey('error')) {
+          throw Exception('Audio transcription failed: ${errorData['error']}');
+        }
+      }
+      throw Exception('Audio transcription failed: ${e.message}');
+    } catch (e) {
+      _logError('transcribeAudio', e);
+      throw Exception('Audio transcription failed: $e');
+    }
+  }
+
   Future<List<ChatSession>> getSessions(String deviceId) async {
     try {
       final response = await _dio.get(
@@ -231,49 +277,49 @@ class ApiService {
     }
   }
 
-  // Audio transcription with improved error handling
-  Future<Map<String, dynamic>> transcribeAudio(File audioFile, [String? sessionId]) async {
-    try {
-      final formData = FormData.fromMap({
-        'audio': await MultipartFile.fromFile(
-          audioFile.path,
-          filename: 'recording_${DateTime.now().millisecondsSinceEpoch}.wav',
-          contentType: MediaType('audio', 'wav'),
-        ),
-        if (sessionId != null) 'session_id': sessionId,
-      });
+  // // Audio transcription with improved error handling
+  // Future<Map<String, dynamic>> transcribeAudio(File audioFile, [String? sessionId]) async {
+  //   try {
+  //     final formData = FormData.fromMap({
+  //       'audio': await MultipartFile.fromFile(
+  //         audioFile.path,
+  //         filename: 'recording_${DateTime.now().millisecondsSinceEpoch}.wav',
+  //         contentType: MediaType('audio', 'wav'),
+  //       ),
+  //       if (sessionId != null) 'session_id': sessionId,
+  //     });
 
-      final response = await _dio.post(
-        ApiConfig.transcribeEndpoint,
-        data: formData,
-        options: Options(
-          headers: {
-            ...ApiConfig.headers,
-            'Content-Type': 'multipart/form-data',
-          },
-          receiveTimeout: const Duration(seconds: 60), // Extended timeout for audio processing
-        ),
-      );
+  //     final response = await _dio.post(
+  //       ApiConfig.transcribeEndpoint,
+  //       data: formData,
+  //       options: Options(
+  //         headers: {
+  //           ...ApiConfig.headers,
+  //           'Content-Type': 'multipart/form-data',
+  //         },
+  //         receiveTimeout: const Duration(seconds: 60), // Extended timeout for audio processing
+  //       ),
+  //     );
 
-      if (response.statusCode != 200) {
-        throw Exception('Audio transcription failed with status ${response.statusCode}');
-      }
+  //     if (response.statusCode != 200) {
+  //       throw Exception('Audio transcription failed with status ${response.statusCode}');
+  //     }
 
-      return response.data;
-    } on DioException catch (e) {
-      _logError('transcribeAudio', e);
-      if (e.response?.data != null && e.response?.data is Map) {
-        final errorData = e.response?.data as Map;
-        if (errorData.containsKey('error')) {
-          throw Exception('Audio transcription failed: ${errorData['error']}');
-        }
-      }
-      throw Exception('Audio transcription failed: ${e.message}');
-    } catch (e) {
-      _logError('transcribeAudio', e);
-      throw Exception('Audio transcription failed: $e');
-    }
-  }
+  //     return response.data;
+  //   } on DioException catch (e) {
+  //     _logError('transcribeAudio', e);
+  //     if (e.response?.data != null && e.response?.data is Map) {
+  //       final errorData = e.response?.data as Map;
+  //       if (errorData.containsKey('error')) {
+  //         throw Exception('Audio transcription failed: ${errorData['error']}');
+  //       }
+  //     }
+  //     throw Exception('Audio transcription failed: ${e.message}');
+  //   } catch (e) {
+  //     _logError('transcribeAudio', e);
+  //     throw Exception('Audio transcription failed: $e');
+  //   }
+  // }
 
   // File upload
   Future<Map<String, dynamic>> uploadImage(File file, String sessionId) async {
@@ -290,7 +336,7 @@ class ApiService {
       final response = await _requestWithRetry(
         RequestOptions(
           method: 'POST',
-          path: ApiConfig.uploadEndpoint,
+          path: ApiConfig.imageEndpoint,
           data: formData,
           headers: {
             ...ApiConfig.headers,

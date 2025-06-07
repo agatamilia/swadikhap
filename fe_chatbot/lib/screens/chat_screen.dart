@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/chat_provider.dart';
@@ -145,6 +146,35 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
+  void _showImageOptions() {
+    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+    
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.camera_alt, color: Colors.green),
+            title: const Text('Ambil Foto'),
+            onTap: () {
+              Navigator.pop(context);
+              chatProvider.pickImageFromCamera(context);  // Open camera directly
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_library, color: Colors.green),
+            title: const Text('Pilih dari Galeri'),
+            onTap: () {
+              Navigator.pop(context);
+              chatProvider.pickImageFromGallery(context);  // Pick image from gallery
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -157,7 +187,7 @@ class _ChatScreenState extends State<ChatScreen> {
         }
         
         return Scaffold(
-          backgroundColor: const Color.fromARGB(213, 232, 245, 233),
+          backgroundColor: const Color.fromARGB(255, 247, 248, 242),
           appBar: AppBar(
             title: Text(
               sessionProvider.currentSession?.name ?? 'PeTaniku',
@@ -193,7 +223,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   onCancel: () => chatProvider.cancelListening(),
                   onFinish: () {
                     if (sessionProvider.currentSession != null) {
-                      chatProvider.stopListening(sessionProvider.currentSession!.id, sessionProvider);
+                      chatProvider.stopListening(sessionProvider.currentSession!.id, sessionProvider.currentSession!.id);
                     }
                   },
                 ),
@@ -383,80 +413,126 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildInputArea(ChatProvider chatProvider, SessionProvider sessionProvider) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 5,
-            offset: const Offset(0, -1),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              FloatingActionButton(
-                onPressed: chatProvider.isLoading 
-                    ? null 
-                    : chatProvider.isListening 
-                        ? () => chatProvider.stopListening(sessionProvider.currentSession?.id ?? '', sessionProvider) 
-                        : () => chatProvider.startListening(context),
-                mini: true,
-                backgroundColor: chatProvider.isListening 
-                    ? Colors.red 
-                    : Theme.of(context).colorScheme.primary,
-                child: Icon(
-                  chatProvider.isListening ? Icons.mic_off : Icons.mic,
-                  color: Colors.white,
-                  size: 28, 
+Widget _buildInputArea(ChatProvider chatProvider, SessionProvider sessionProvider) {
+  final bool hasText = _textController.text.isNotEmpty;
+
+  return Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(40),
+    ),
+    child: Column(
+      children: [
+        Row(
+          children: [
+            // Button to show options for camera/gallery
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: IconButton(
+                onPressed: chatProvider.isLoading || chatProvider.isListening
+                    ? null
+                    : _showImageOptions, // Open options to pick image or camera
+                icon: const Icon(
+                  Icons.attach_file,
+                  color: Colors.black,
+                  size: 28,
                 ),
               ),
-              const SizedBox(width: 12), 
-              
-
-              Expanded(
+            ),
+            // Input text field
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.yellow[50],
+                  borderRadius: BorderRadius.circular(40),
+                  border: Border.all(color: Colors.green[200]!, width: 2),
+                ),
                 child: TextField(
                   controller: _textController,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 18), 
+                  style: TextStyle(
+                    color: _textController.text.isEmpty
+                        ? Colors.grey[600]
+                        : Colors.black,
+                    fontSize: 18,
+                  ),
                   decoration: InputDecoration(
-                    hintText: chatProvider.hasImagePending 
-                        ? "Ketik pertanyaan tentang gambar ini..." 
-                        : "Tanyakan sesuatu tentang pertanian...",
-                    hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 18), 
+                    hintText: chatProvider.hasImagePending
+                        ? "Ketik pertanyaan untuk gambar ini..."
+                        : "Tulis pertanyaan di sini...",
+                    hintStyle: TextStyle(color: Colors.grey[500], fontSize: 18),
+                    border: InputBorder.none,
+                    filled: false,
                   ),
                   enabled: !chatProvider.isListening && !chatProvider.isLoading,
+                  onChanged: (text) {
+                    setState(() {});
+                  },
                   onSubmitted: (text) => _handleSubmitted(context, text),
                 ),
               ),
-              const SizedBox(width: 12), 
-              
-              FloatingActionButton(
-                onPressed: chatProvider.isLoading 
-                    ? null 
-                    : () => _handleSubmitted(context, _textController.text),
-                mini: true,
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                child: const Icon(
-                  Icons.send,
-                  color: Colors.white,
-                  size: 28, 
+            ),
+            // Mic or Send button
+            Padding(
+              padding: const EdgeInsets.only(left: 8.0),
+              child: CircleAvatar(
+                backgroundColor: const Color(0xFF388E3C),
+                radius: 24,
+                child: IconButton(
+                  onPressed: chatProvider.isLoading
+                      ? null
+                      : chatProvider.isListening
+                          ? () => chatProvider.stopListening(sessionProvider.currentSession?.id ?? '', sessionProvider.currentSession?.id ?? '')
+                          : () {
+                              if (_textController.text.isEmpty) {
+                                chatProvider.startListening(context);
+                              } else {
+                                _handleSubmitted(context, _textController.text);
+                              }
+                            },
+                  icon: Icon(
+                    _textController.text.isEmpty
+                        ? (chatProvider.isListening ? Icons.mic_off : Icons.mic)
+                        : Icons.send,
+                    color: Colors.white,
+                    size: 28,
+                  ),
                 ),
+              ),
+            ),
+          ],
+        ),
+        // Image preview if there is a pending image
+        if (chatProvider.selectedImage != null)
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.file(
+                  chatProvider.selectedImage!,
+                  width: 100,
+                  height: 100,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.cancel, color: Colors.red),
+                onPressed: () {
+                  chatProvider.clearPendingImage(); // Clear the image preview
+                },
               ),
             ],
           ),
-          
-          const SizedBox(height: 16), 
-          SuggestionChips(
-            onSuggestionSelected: _onSuggestionSelected,
-            chipTextStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 18), 
-          ),
-        ],
-      ),
-    );
-  }
+        const SizedBox(height: 16),
+        // Suggestion chips below the input area
+        SuggestionChips(
+          onSuggestionSelected: _onSuggestionSelected,
+          chipTextStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 18),
+        ),
+      ],
+    ),
+  );
+}
+
 }

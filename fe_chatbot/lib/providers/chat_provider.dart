@@ -18,10 +18,16 @@ import '../services/storage_service.dart';
 class ChatProvider with ChangeNotifier {
   final List<ChatMessage> _messages = [];
   final ApiService _apiService = ApiService();
-  final AudioService _audioService = AudioService();
   final TTSService _ttsService = TTSService();
   final ImageService _imageService = ImageService();
   final ImagePicker _imagePicker = ImagePicker();
+  final audioFile = File('path');
+  final AudioService _audioService = AudioService();
+  bool _isRecording = false;
+  bool _isTranscribing = false;
+
+  bool get isRecording => _isRecording;
+  bool get isTranscribing => _isTranscribing;
 
   bool _isLoading = false;
   bool _isListening = false;
@@ -36,6 +42,7 @@ class ChatProvider with ChangeNotifier {
   bool get isListening => _isListening;
   bool get useVoiceOutput => _useVoiceOutput;
   bool get hasImagePending => _pendingImage != null;
+  File? get selectedImage => _pendingImage;
 
   ChatProvider() {
     _initialize();
@@ -260,72 +267,34 @@ class ChatProvider with ChangeNotifier {
 
   Future<void> startListening(BuildContext context) async {
     try {
-      if (!await PermissionService.hasMicrophonePermission()) {
-        final granted = await PermissionService.requestMicrophonePermission();
-        if (!granted && context.mounted) {
-          await PermissionService.showPermissionDialog(context, 'Mikrofon');
-          return;
-        }
-      }
-
-      await _audioService.initRecorder();
-      await _audioService.startRecording();
-      
-      _isListening = true;
-      notifyListeners();
-    } catch (e) {
-      _isListening = false;
-      notifyListeners();
-      _showErrorSnackbar(context, 'Gagal memulai rekaman: ${e.toString()}');
-    }
-  }
-
-  Future<void> stopListening(String sessionId, SessionProvider sessionProvider) async {
-    if (!_isListening) return;
-    
-    _isListening = false;
-    _isLoading = true;
-    notifyListeners();
-
-    try {
-      final recordingPath = await _audioService.stopRecording();
-      if (recordingPath == null) {
-        throw Exception('No recording path available');
-      }
-
-      final recordingFile = _audioService.getRecordingFile();
-      if (recordingFile == null || !await recordingFile.exists()) {
-        throw Exception('Recording file not found');
-      }
-
-      final audioMessage = ChatMessage(
-        id: 'audio_${DateTime.now().millisecondsSinceEpoch}',
-        content: 'Processing voice messages...',
-        role: MessageRole.user,
-        isAudio: true,
-      );
-      _addMessage(sessionId, audioMessage);
-
-      final response = await _apiService.transcribeAudio(recordingFile, sessionId);
-      final transcription = response['transcription'] as String;
-      final aiResponse = response['ai_response'] as String;
-      
-      final index = messages.indexWhere((m) => m.id == audioMessage.id);
-      if (index != -1) {
-        messages[index] = messages[index].copyWith(content: transcription);
+      final recordingPath = await _audioService.startListening();
+      if (recordingPath != null) {
+        _isRecording = true;
         notifyListeners();
       }
-
-      await _addBotMessage(aiResponse, sessionId);
     } catch (e) {
-      _addBotMessage("Failed to process voice recording: ${e.toString()}", sessionId);
-      print('Error in stopListening: $e');
-    } finally {
-      _isLoading = false;
-      notifyListeners();
+      print('Error starting listening: $e');
     }
   }
+  Future<void> stopListening(String sessionId, String deviceId) async {
+    try {
+      final recordingPath = await _audioService.stopRecording();
+      if (recordingPath != null) {
+        _isRecording = false;
+        _isTranscribing = true;
+        notifyListeners();
 
+        final audioFile = File(recordingPath);
+        await ApiService().transcribeAudio(audioFile, sessionId, deviceId);
+        _isTranscribing = false;
+        notifyListeners();
+      }
+    } catch (e) {
+      print('Error stopping listening: $e');
+      _isTranscribing = false;
+      notifyListeners();
+    }
+  } 
   void cancelListening() {
     _isListening = false;
     _audioService.stopRecording();
@@ -341,7 +310,7 @@ class ChatProvider with ChangeNotifier {
     });
   }
 
-  Future<void> pickImage(BuildContext context) async {
+  Future<void> pickImageFromGallery(BuildContext context) async {
     try {
       final hasPermission = await PermissionService.hasStoragePermission();
       if (!hasPermission && await PermissionService.requestStoragePermission() == false) {
@@ -356,24 +325,39 @@ class ChatProvider with ChangeNotifier {
         maxWidth: 1800,
         maxHeight: 1800,
       );
-      
+
       if (pickedFile == null) return;
-      
+
       final appDir = await getApplicationDocumentsDirectory();
       final fileName = path.basename(pickedFile.path);
       final savedImage = await File(pickedFile.path).copy('${appDir.path}/$fileName');
       
       _pendingImage = savedImage;
-      
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Gambar telah dipilih. Silakan ketik pertanyaan Anda dan kirim.'),
-            duration: Duration(seconds: 3),
-          )
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text('Gambar telah dipilih. Silakan ketik pertanyaan Anda dan kirim.'),
+                ),
+                const SizedBox(width: 10),
+                Image.file(
+                  savedImage,
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.cover,
+                ),
+              ],
+            ),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.green[700],
+          ),
         );
       }
-      
+
       notifyListeners();
     } catch (e) {
       print('Error picking image: $e');
@@ -381,6 +365,68 @@ class ChatProvider with ChangeNotifier {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Gagal memilih gambar. Silakan coba lagi.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> pickImageFromCamera(BuildContext context) async {
+    try {
+      final hasPermission = await PermissionService.hasCameraPermission();
+      if (!hasPermission && await PermissionService.requestCameraPermission() == false) {
+        if (context.mounted) {
+          await PermissionService.showPermissionDialog(context, 'Kamera');
+        }
+        return;
+      }
+      
+      final pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1800,
+        maxHeight: 1800,
+      );
+
+      if (pickedFile == null) return;
+
+      final appDir = await getApplicationDocumentsDirectory();
+      final fileName = path.basename(pickedFile.path);
+      final savedImage = await File(pickedFile.path).copy('${appDir.path}/$fileName');
+      
+      _pendingImage = savedImage;
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text('Gambar telah dipilih. Silakan ketik pertanyaan Anda dan kirim.'),
+                ),
+                const SizedBox(width: 10),
+                Image.file(
+                  savedImage,
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.cover,
+                ),
+              ],
+            ),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.green[700],
+          ),
+        );
+      }
+
+      notifyListeners();
+    } catch (e) {
+      print('Error taking picture: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Gagal mengambil gambar. Silakan coba lagi.'),
             duration: Duration(seconds: 3),
           ),
         );

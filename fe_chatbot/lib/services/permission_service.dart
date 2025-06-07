@@ -46,7 +46,30 @@ class PermissionService {
     
     return status.isGranted;
   }
+  
+  static Future<bool> requestCameraPermission() async {
+    print('Requesting camera permission');
+    var status = await Permission.camera.status;
+    print('Current camera permission status: $status');
+    
+    if (status.isDenied) {
+      status = await Permission.camera.request();
+      print('Camera permission after request: $status');
+    }
+    
+    if (status.isPermanentlyDenied) {
+      print('Camera permission permanently denied');
+      return false;
+    }
+    
+    return status.isGranted;
+  }
 
+  // Check if camera permission is granted
+  static Future<bool> hasCameraPermission() async {
+    return await Permission.camera.isGranted;
+  }
+  
   // Request storage permission
   static Future<bool> requestStoragePermission() async {
     print('Requesting storage permission');

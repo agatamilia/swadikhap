@@ -19,6 +19,7 @@ class SessionProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get hasError => _hasError;
   String? get lastErrorMessage => _lastErrorMessage;
+  String get deviceId => _deviceId;
 
   SessionProvider({
     required ApiService apiService,
@@ -47,18 +48,21 @@ class SessionProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final List<ChatSession> fetchedSessions = await _apiService.getSessions(_deviceId);
+      final List<ChatSession> fetchedSessions =
+          await _apiService.getSessions(_deviceId);
       _sessions = fetchedSessions;
-      
+
       // Restore last session if available
       final prefs = await SharedPreferences.getInstance();
       final lastSessionId = prefs.getString('last_session_id');
-      
+
       if (lastSessionId != null) {
         try {
           _currentSession = _sessions.firstWhere(
             (s) => s.id == lastSessionId,
-            orElse: () => _sessions.isNotEmpty ? _sessions.first : throw Exception('No sessions'),
+            orElse: () => _sessions.isNotEmpty
+                ? _sessions.first
+                : throw Exception('No sessions'),
           );
         } catch (e) {
           _currentSession = _sessions.isNotEmpty ? _sessions.first : null;
@@ -70,7 +74,7 @@ class SessionProvider with ChangeNotifier {
       debugPrint('Error fetching sessions: $e');
       _hasError = true;
       _lastErrorMessage = 'Failed to load chat sessions';
-      
+
       // Create a local session if none exists
       if (_currentSession == null) {
         await _createLocalSession('New Chat');
@@ -86,7 +90,8 @@ class SessionProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final ChatSession newSession = await _apiService.createSession(name, _deviceId);
+      final ChatSession newSession =
+          await _apiService.createSession(name, _deviceId);
       _sessions.insert(0, newSession);
       _currentSession = newSession;
       await _saveLastSessionId(newSession.id);
@@ -109,21 +114,21 @@ class SessionProvider with ChangeNotifier {
       updatedAt: now,
       deviceId: _deviceId,
     );
-    
+
     _sessions.insert(0, localSession);
     _currentSession = localSession;
     await _saveLastSessionId(localSession.id);
-    
+
     _hasError = true;
     _lastErrorMessage = 'Failed to create session on server';
     notifyListeners();
-    
+
     return localSession;
   }
 
   void setCurrentSession(ChatSession session) {
     if (_currentSession?.id == session.id) return;
-    
+
     _currentSession = session;
     _saveLastSessionId(session.id);
     notifyListeners();
@@ -139,11 +144,11 @@ class SessionProvider with ChangeNotifier {
     try {
       final updatedSession = _sessions[index].copyWith(name: newName);
       _sessions[index] = updatedSession;
-      
+
       if (_currentSession?.id == session.id) {
         _currentSession = updatedSession;
       }
-      
+
       await _apiService.updateSession(updatedSession, _deviceId);
       await _saveLastSessionId(updatedSession.id);
     } catch (e) {
@@ -182,7 +187,7 @@ class SessionProvider with ChangeNotifier {
     try {
       await _apiService.deleteSession(session.id, _deviceId);
       _sessions.removeAt(index);
-      
+
       if (_currentSession?.id == session.id) {
         _currentSession = _sessions.isNotEmpty ? _sessions.first : null;
         if (_currentSession != null) {
@@ -223,8 +228,9 @@ class SessionProvider with ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final lastSessionId = prefs.getString('last_session_id');
-      
-      if (lastSessionId != null && _sessions.any((s) => s.id == lastSessionId)) {
+
+      if (lastSessionId != null &&
+          _sessions.any((s) => s.id == lastSessionId)) {
         _currentSession = _sessions.firstWhere((s) => s.id == lastSessionId);
       }
     } catch (e) {

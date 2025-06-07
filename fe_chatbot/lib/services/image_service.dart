@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart'; 
 import '../config/api_config.dart';
 
 class ImageService {
@@ -60,7 +61,7 @@ class ImageService {
         fileStream,
         fileLength,
         filename: path.basename(imageFile.path),
-        contentType: _getImageContentType(imageFile.path),
+        contentType: _getImageContentType(imageFile.path),  // Use the updated method
       );
       request.files.add(multipartFile);
       
@@ -79,8 +80,8 @@ class ImageService {
     }
   }
 
-  // Get content type based on file extension
-  _getImageContentType(String filePath) {
+  // Get content type based on file extension (using http_parser's MediaType)
+  MediaType _getImageContentType(String filePath) {
     final ext = path.extension(filePath).toLowerCase();
     switch (ext) {
       case '.jpg':
@@ -95,14 +96,3 @@ class ImageService {
     }
   }
 }
-
-class MediaType {
-  final String type;
-  final String subtype;
-  
-  MediaType(this.type, this.subtype);
-  
-  @override
-  String toString() => '$type/$subtype';
-}
-
