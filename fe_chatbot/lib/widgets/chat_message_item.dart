@@ -75,66 +75,54 @@ class ChatMessageItem extends StatelessWidget {
     );
   }
   
-  Widget _buildMessageContent(BuildContext context) {
+Widget _buildMessageContent(BuildContext context) {
   final isUser = message.role == MessageRole.user;
-  
-  // Check if this is an image message
   if (message.imageUrl != null) {
+    final isNetworkImage = message.imageUrl!.startsWith('http');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Image preview
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: Image.file(
-            File(message.imageUrl!),
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: 200,
-            errorBuilder: (context, error, stackTrace) {
-              return Container(
-                width: double.infinity,
-                height: 100,
-                color: Colors.grey[300],
-                child: const Center(
-                  child: Text('Tidak dapat menampilkan gambar'),
+          child: isNetworkImage
+              ? Image.network(
+                  message.imageUrl!,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: 200,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Text('Gagal memuat gambar dari server.');
+                  },
+                )
+              : Image.file(
+                  File(message.imageUrl!),
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: 200,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                 ),
-              );
-            },
-          ),
         ),
         const SizedBox(height: 8),
-        // Caption - hanya parse bold untuk assistant
-        if (!isUser) 
+        if (!isUser)
           RichText(
             text: TextSpan(
-              style: const TextStyle(color: Colors.black),
+              style: TextStyle(
+                color: Colors.black,
+                fontSize: 16,
+              ),
               children: _parseBoldText(message.content),
             ),
           )
         else
-          Text(
-            message.content,
-            style: const TextStyle(color: Colors.white),
-          ),
+          Text(message.content, style: const TextStyle(color: Colors.white, fontSize: 16)),
       ],
     );
   }
-  
-  // Regular text message - hanya parse bold untuk assistant
-  if (!isUser) {
-    return RichText(
-      text: TextSpan(
-        style: const TextStyle(color: Colors.black),
-        children: _parseBoldText(message.content),
-      ),
-    );
-  }
-  
-  // Pesan user tetap plain text
+
   return Text(
     message.content,
-    style: const TextStyle(color: Colors.white),
+    style: TextStyle(color: isUser ? Colors.white : Colors.black, fontSize: 16),
   );
 }
 

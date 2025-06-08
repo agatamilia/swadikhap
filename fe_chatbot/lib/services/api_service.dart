@@ -322,15 +322,16 @@ class ApiService {
   // }
 
   // File upload
-  Future<Map<String, dynamic>> uploadImage(File file, String sessionId) async {
+  Future<Map<String, dynamic>> uploadImage(File file, String sessionId, String deviceId) async {
     try {
       final formData = FormData.fromMap({
-        'image': await MultipartFile.fromFile(
+        'file': await MultipartFile.fromFile(
           file.path,
           filename: file.path.split('/').last,
           contentType: MediaType('image', 'jpeg'),
         ),
         'session_id': sessionId,
+        'device_id': deviceId,
       });
       
       final response = await _requestWithRetry(

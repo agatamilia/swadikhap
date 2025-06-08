@@ -221,11 +221,18 @@ class _ChatScreenState extends State<ChatScreen> {
               if (chatProvider.isListening) 
                 VoiceInputOverlay(
                   onCancel: () => chatProvider.cancelListening(),
-                  onFinish: () {
-                    if (sessionProvider.currentSession != null) {
-                      chatProvider.stopListening(sessionProvider.currentSession!.id, sessionProvider.currentSession!.id);
-                    }
-                  },
+                  onFinish: () async {
+                chatProvider.cancelListening(); // Hilangkan overlay dulu
+                await Future.delayed(const Duration(milliseconds: 300)); // Tambahkan sedikit delay opsional
+                if (sessionProvider.currentSession != null) {
+                  await chatProvider.stopListening(
+                    sessionProvider.currentSession!.id,
+                    chatProvider.deviceId,
+                  );
+                }
+                setState(() {});
+              },
+
                 ),
             ],
           ),

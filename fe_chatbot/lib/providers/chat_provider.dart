@@ -21,7 +21,6 @@ class ChatProvider with ChangeNotifier {
   final TTSService _ttsService = TTSService();
   final ImageService _imageService = ImageService();
   final ImagePicker _imagePicker = ImagePicker();
-  final audioFile = File('path');
   final AudioService _audioService = AudioService();
   bool _isRecording = false;
   bool _isTranscribing = false;
@@ -43,6 +42,7 @@ class ChatProvider with ChangeNotifier {
   bool get useVoiceOutput => _useVoiceOutput;
   bool get hasImagePending => _pendingImage != null;
   File? get selectedImage => _pendingImage;
+  String get deviceId => _deviceId;
 
   ChatProvider() {
     _initialize();
@@ -50,11 +50,11 @@ class ChatProvider with ChangeNotifier {
 
   Future<void> _initialize() async {
     if (_isInitialized) return;
-    
+
     try {
       final deviceService = DeviceService();
       _deviceId = await deviceService.getDeviceId();
-      
+
       await _ttsService.initialize();
       await _initAudio();
       _isInitialized = true;
@@ -81,29 +81,31 @@ class ChatProvider with ChangeNotifier {
     if (_currentSessionId == sessionId && _messages.isNotEmpty) {
       return;
     }
-    
+
     _messages.clear();
     _currentSessionId = sessionId;
     _isLoading = true;
     notifyListeners();
-    
+
     try {
-      final localMessages = await StorageService.getMessages(sessionId, _deviceId);
+      final localMessages =
+          await StorageService.getMessages(sessionId, _deviceId);
       if (localMessages.isNotEmpty) {
         _messages.addAll(localMessages);
         _isLoading = false;
         notifyListeners();
       }
-      
+
       try {
-        final savedMessages = await _apiService.getMessages(sessionId, _deviceId);
-        
+        final savedMessages =
+            await _apiService.getMessages(sessionId, _deviceId);
+
         if (savedMessages.isNotEmpty) {
           _messages.clear();
-          
+
           final uniqueMessages = <ChatMessage>[];
           final seen = <String>{};
-          
+
           for (final msg in savedMessages) {
             final key = '${msg.role}:${msg.content}';
             if (!seen.contains(key)) {
@@ -111,9 +113,9 @@ class ChatProvider with ChangeNotifier {
               seen.add(key);
             }
           }
-          
+
           _messages.addAll(uniqueMessages);
-          
+
           await StorageService.saveMessages(sessionId, _messages, _deviceId);
         } else if (_messages.isEmpty) {
           _addWelcomeMessage(sessionId);
@@ -127,7 +129,7 @@ class ChatProvider with ChangeNotifier {
     } catch (e) {
       print('Error loading messages: $e');
       _addWelcomeMessage(sessionId);
-      
+
       if (_messages.isEmpty) {
         _addConnectionErrorMessage();
       }
@@ -144,15 +146,17 @@ class ChatProvider with ChangeNotifier {
 
   void _addWelcomeMessage(String sessionId) {
     _messages.add(ChatMessage(
-      content: "Selamat datang di PeTaniku! Saya siap membantu dengan pertanyaan seputar pertanian.",
+      content:
+          "Selamat datang di PeTaniku! Saya siap membantu dengan pertanyaan seputar pertanian.",
       role: MessageRole.assistant,
     ));
   }
 
   void _addConnectionErrorMessage() {
     _messages.add(ChatMessage(
-      content: "Saya tidak dapat terhubung ke server saat ini. Beberapa fitur mungkin terbatas. "
-               "Pesan Anda akan disimpan secara lokal dan akan disinkronkan ketika koneksi pulih.",
+      content:
+          "Saya tidak dapat terhubung ke server saat ini. Beberapa fitur mungkin terbatas. "
+          "Pesan Anda akan disimpan secara lokal dan akan disinkronkan ketika koneksi pulih.",
       role: MessageRole.assistant,
     ));
   }
@@ -162,25 +166,39 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> sendMessage(String text, String sessionId, SessionProvider sessionProvider) async {
+  Future<void> sendMessage(
+      String text, String sessionId, SessionProvider sessionProvider) async {
     if (text.isEmpty && !hasImagePending) return;
 
     if (_messages.isEmpty) {
-      final sessionName = text.isNotEmpty 
+      final sessionName = text.isNotEmpty
           ? (text.length > 30 ? '${text.substring(0, 30)}...' : text)
           : 'Analisis Gambar';
       try {
-        await sessionProvider.renameSession(sessionProvider.currentSession!, sessionName);
+        await sessionProvider.renameSession(
+            sessionProvider.currentSession!, sessionName);
       } catch (e) {
         print('Failed to update session name: $e');
       }
     }
 
     if (_pendingImage != null) {
+      if (text.isNotEmpty) {
+        // Simpan pertanyaan user + gambar di chat bubble
+        final userImageMessage = ChatMessage(
+          content: text,
+          role: MessageRole.user,
+          imageUrl: _pendingImage!.path,
+        );
+        _messages.add(userImageMessage);
+        notifyListeners();
+        await _apiService.saveMessage(userImageMessage, sessionId, _deviceId);
+      }
+
       await _processImage(sessionId);
       return;
     }
-    
+
     final userMessage = ChatMessage(
       content: text,
       role: MessageRole.user,
@@ -210,13 +228,43 @@ class ChatProvider with ChangeNotifier {
 
   Future<void> _processImage(String sessionId) async {
     if (_pendingImage == null) return;
-    
+
     _isLoading = true;
     notifyListeners();
-    
+
     try {
-      final response = await _imageService.uploadAndAnalyzeImage(_pendingImage!, sessionId);
-      await _addBotMessage(response['analysis'], sessionId);
+      final response = await _imageService.uploadAndAnalyzeImage(
+        _pendingImage!,
+        sessionId,
+        _deviceId,
+      );
+
+      final label = response['detected'];
+      final confidence = response['confidence'];
+      final explanation =
+          response['explanation'] ?? "Tidak ditemukan penyakit.";
+
+      String messageText = (label != null)
+          ? "Deteksi: *$label* ($confidence%)\n\n$explanation"
+          : explanation;
+
+      if (response.containsKey("image_url")) {
+        final botMessage = ChatMessage(
+          content: messageText,
+          role: MessageRole.assistant,
+          imageUrl: response["image_url"],
+        );
+        _messages.add(botMessage);
+        notifyListeners();
+        await _apiService.saveMessage(botMessage, sessionId, _deviceId);
+
+        if (_useVoiceOutput) {
+          _speakText(botMessage.content);
+        }
+      } else {
+        await _addBotMessage(messageText, sessionId);
+      }
+
       _pendingImage = null;
     } catch (e) {
       print('Error processing image: $e');
@@ -233,24 +281,24 @@ class ChatProvider with ChangeNotifier {
   }
 
   Future<void> _addBotMessage(String content, String sessionId) async {
-    final cleanContent = content.replaceAll('*', ''); 
+    final cleanContent = content.replaceAll('*', '');
     final botMessage = ChatMessage(
       content: content,
       cleanContent: cleanContent,
       role: MessageRole.assistant,
     );
-    
+
     _messages.add(botMessage);
-    
+
     try {
       await _apiService.saveMessage(botMessage, sessionId, _deviceId);
     } catch (e) {
       print('Failed to save bot message: $e');
     }
-    
+
     _isLoading = false;
     notifyListeners();
-    
+
     if (_useVoiceOutput) {
       _speakText(botMessage.cleanContent ?? cleanContent);
     }
@@ -267,6 +315,8 @@ class ChatProvider with ChangeNotifier {
 
   Future<void> startListening(BuildContext context) async {
     try {
+      _isListening = true;
+      notifyListeners();
       final recordingPath = await _audioService.startListening();
       if (recordingPath != null) {
         _isRecording = true;
@@ -274,8 +324,11 @@ class ChatProvider with ChangeNotifier {
       }
     } catch (e) {
       print('Error starting listening: $e');
+      _isListening = false;
+      notifyListeners();
     }
   }
+
   Future<void> stopListening(String sessionId, String deviceId) async {
     try {
       final recordingPath = await _audioService.stopRecording();
@@ -284,17 +337,65 @@ class ChatProvider with ChangeNotifier {
         _isTranscribing = true;
         notifyListeners();
 
+        // Buat sesi baru jika masih local
+        if (sessionId.startsWith('local_')) {
+          final newSession =
+              await _apiService.createSession("Percakapan Baru", deviceId);
+          sessionId = newSession.id;
+          _currentSessionId = sessionId;
+        }
+
+        // Simpan file audio
         final audioFile = File(recordingPath);
-        await ApiService().transcribeAudio(audioFile, sessionId, deviceId);
-        _isTranscribing = false;
+        final appDir = await getApplicationDocumentsDirectory();
+        final fileName = path.basename(recordingPath);
+        final savedPath = path.join(appDir.path, fileName);
+        final savedAudio = await audioFile.copy(savedPath);
+
+        // Transkripsi suara ke teks
+        final response =
+            await _apiService.transcribeAudio(savedAudio, sessionId, deviceId);
+        final transcription = response['transcription'];
+
+        // Tampilkan bubble dari user (petani) dengan isi transkrip
+        final userMessage = ChatMessage(
+          content: transcription,
+          role: MessageRole.user,
+        );
+        _messages.add(userMessage);
         notifyListeners();
+        await _apiService.saveMessage(userMessage, sessionId, deviceId);
+
+        // Tampilkan animasi "menunggu jawaban"
+        _isLoading = true;
+        notifyListeners();
+
+        // Kirim ke bot
+        final assistantResponse =
+            await _apiService.sendMessage(transcription, sessionId);
+        final assistantMessage = ChatMessage(
+          content: assistantResponse['response'],
+          role: MessageRole.assistant,
+        );
+        _messages.add(assistantMessage);
+        notifyListeners();
+        await _apiService.saveMessage(assistantMessage, sessionId, deviceId);
       }
     } catch (e) {
       print('Error stopping listening: $e');
+      _messages.add(ChatMessage(
+        content: "Gagal memproses rekaman suara: ${e.toString()}",
+        role: MessageRole.assistant,
+      ));
+      notifyListeners();
+    } finally {
+      _isListening = false;
       _isTranscribing = false;
+      _isLoading = false;
       notifyListeners();
     }
-  } 
+  }
+
   void cancelListening() {
     _isListening = false;
     _audioService.stopRecording();
@@ -313,25 +414,26 @@ class ChatProvider with ChangeNotifier {
   Future<void> pickImageFromGallery(BuildContext context) async {
     try {
       final hasPermission = await PermissionService.hasStoragePermission();
-      if (!hasPermission && await PermissionService.requestStoragePermission() == false) {
+      if (!hasPermission &&
+          await PermissionService.requestStoragePermission() == false) {
         if (context.mounted) {
           await PermissionService.showPermissionDialog(context, 'Penyimpanan');
         }
         return;
       }
-      
+
       final pickedFile = await _imagePicker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1800,
-        maxHeight: 1800,
+        imageQuality: null,
       );
 
       if (pickedFile == null) return;
 
       final appDir = await getApplicationDocumentsDirectory();
       final fileName = path.basename(pickedFile.path);
-      final savedImage = await File(pickedFile.path).copy('${appDir.path}/$fileName');
-      
+      final savedImage =
+          await File(pickedFile.path).copy('${appDir.path}/$fileName');
+
       _pendingImage = savedImage;
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -341,7 +443,8 @@ class ChatProvider with ChangeNotifier {
                 const Icon(Icons.check_circle, color: Colors.white),
                 const SizedBox(width: 10),
                 const Expanded(
-                  child: Text('Gambar telah dipilih. Silakan ketik pertanyaan Anda dan kirim.'),
+                  child: Text(
+                      'Gambar telah dipilih. Silakan ketik pertanyaan Anda dan kirim.'),
                 ),
                 const SizedBox(width: 10),
                 Image.file(
@@ -375,25 +478,26 @@ class ChatProvider with ChangeNotifier {
   Future<void> pickImageFromCamera(BuildContext context) async {
     try {
       final hasPermission = await PermissionService.hasCameraPermission();
-      if (!hasPermission && await PermissionService.requestCameraPermission() == false) {
+      if (!hasPermission &&
+          await PermissionService.requestCameraPermission() == false) {
         if (context.mounted) {
           await PermissionService.showPermissionDialog(context, 'Kamera');
         }
         return;
       }
-      
+
       final pickedFile = await _imagePicker.pickImage(
         source: ImageSource.camera,
-        maxWidth: 1800,
-        maxHeight: 1800,
+        imageQuality: null,
       );
 
       if (pickedFile == null) return;
 
       final appDir = await getApplicationDocumentsDirectory();
       final fileName = path.basename(pickedFile.path);
-      final savedImage = await File(pickedFile.path).copy('${appDir.path}/$fileName');
-      
+      final savedImage =
+          await File(pickedFile.path).copy('${appDir.path}/$fileName');
+
       _pendingImage = savedImage;
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -403,7 +507,8 @@ class ChatProvider with ChangeNotifier {
                 const Icon(Icons.check_circle, color: Colors.white),
                 const SizedBox(width: 10),
                 const Expanded(
-                  child: Text('Gambar telah dipilih. Silakan ketik pertanyaan Anda dan kirim.'),
+                  child: Text(
+                      'Gambar telah dipilih. Silakan ketik pertanyaan Anda dan kirim.'),
                 ),
                 const SizedBox(width: 10),
                 Image.file(
