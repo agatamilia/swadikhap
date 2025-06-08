@@ -456,93 +456,53 @@ def chat():
         data = request.json
         message = data.get('message', '')
         session_id = data.get('session_id', '')
-        
+
         if not message:
-            return jsonify({"error": "Message is required"}), 400
-        
-        headers = {
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "model": "deepseek-chat",
-            "messages": [
-                {"role": "system", "content": "You are the assistant for PeTaniku agriculture. Please format the answers with:\n" "1. Replace text with text for bold\n" "2. Avoid using markdown like ### for headings\n" "3. Use a new line to separate sections"},
-                    # {"role": "system", "content": "Anda adalah asisten pertanian PeTaniku. Tolong format jawaban dengan:\n"
-                    #                             "1. Ganti **teks** dengan *teks* untuk bold\n"
-                    #                             "2. Hindari penggunaan markdown seperti ### untuk heading\n"
-                    #                             "3. Gunakan garis baru untuk pemisah bagian"},
-                {"role": "user", "content": message}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 1000
-        }
-        
-        response = requests.post(
-            "https://api.deepseek.com/v1/chat/completions",
-            headers=headers,
-            json=payload
-        )
-        
-        result = response.json()
-        
-        if response.status_code == 200:
-            assistant_message = result['choices'][0]['message']['content']
-            
-            # Remove markdown headings and ensure proper bold formatting
-            formatted_message = assistant_message.replace('###', '').replace('**', '*')
-            
-            # Create a clean version for TTS (without formatting markers)
-            clean_tts_message = formatted_message.replace('*', '')
-            
-            if session_id:
-                try:
-                    session = db.session.get(Session, session_id)
-                    if not session:
-                        return jsonify({"error": "Session not found"}), 404
-                    
-                    current_time = int(datetime.now().timestamp() * 1000)
-                    
-                    # Save user message
-                    user_message = Message(
-                        id=str(uuid.uuid4()),
-                        session_id=session_id,
-                        content=message,
-                        role='user',
-                        timestamp=current_time
-                    )
-                    
-                    # Save assistant message
-                    assistant_message = Message(
-                        id=str(uuid.uuid4()),
-                        session_id=session_id,
-                        content=formatted_message,
-                        role='assistant',
-                        timestamp=current_time + 1  # Ensure ordering
-                    )
-                    
-                    # Update session timestamp
-                    session.updated_at = current_time
-                    
-                    db.session.add_all([user_message, assistant_message])
-                    db.session.commit()
-                except Exception as e:
-                    logger.error(f"Error saving messages to database: {e}")
-                    db.session.rollback()
-            
-            return jsonify({
-                "response": formatted_message,
-                "clean_tts_message": clean_tts_message,
-                "is_farming_related": True
-            })
-        else:
-            logger.error(f"DeepSeek API error: {result}")
-            return jsonify({"error": "Failed to get response from AI", "details": result}), response.status_code
-            
+            return jsonify({"error": "Pesan tidak boleh kosong"}), 400
+
+        assistant_message = get_deepseek_response(message)
+        formatted_message = assistant_message.replace('###', '').replace('**', '*')
+        clean_tts_message = formatted_message.replace('*', '')
+
+        if session_id:
+            try:
+                session = db.session.get(Session, session_id)
+                if not session:
+                    return jsonify({"error": "Sesi tidak ditemukan"}), 404
+
+                current_time = int(datetime.now().timestamp() * 1000)
+
+                user_msg = Message(
+                    id=str(uuid.uuid4()),
+                    session_id=session_id,
+                    content=message,
+                    role='user',
+                    timestamp=current_time
+                )
+                assistant_msg = Message(
+                    id=str(uuid.uuid4()),
+                    session_id=session_id,
+                    content=formatted_message,
+                    role='assistant',
+                    timestamp=current_time + 1
+                )
+                session.updated_at = current_time
+
+                db.session.add_all([user_msg, assistant_msg])
+                db.session.commit()
+            except Exception as e:
+                logger.error(f"Gagal menyimpan pesan: {e}")
+                db.session.rollback()
+
+        return jsonify({
+            "response": formatted_message,
+            "clean_tts_message": clean_tts_message,
+            "is_farming_related": True
+        })
+
     except Exception as e:
         logger.error(f"Chat API error: {e}")
-        return jsonify({"error": "An error occurred while processing your message"}), 500
+        return jsonify({"error": "Terjadi kesalahan saat memproses pesan Anda"}), 500
 
 @app.route('/uploads/audio/<filename>')
 def serve_audio(filename):
@@ -687,34 +647,34 @@ def get_openweather_data(lat, lon):
         logger.error(f"OpenWeather API error: {e}")
         return None
 
-# def get_farming_advice(weather_main):
-#     """Get farming advice based on weather condition"""
-#     weather_main = weather_main.lower()
-    
-#     if any(x in weather_main for x in ['clear', 'sun']):
-#         return "Cocok untuk panen atau pengeringan hasil panen"
-#     elif any(x in weather_main for x in ['cloud', 'fog', 'mist', 'haze']):
-#         return "Baik untuk menanam bibit atau penyemprotan pestisida"
-#     elif any(x in weather_main for x in ['rain', 'drizzle', 'shower']):
-#         return "Hindari pemupukan dan penyemprotan pestisida"
-#     elif any(x in weather_main for x in ['thunder', 'storm']):
-#         return "Pastikan drainase lahan baik untuk mencegah genangan"
-#     else:
-#         return "Pantau kondisi tanaman secara berkala"
 def get_farming_advice(weather_main):
     """Get farming advice based on weather condition"""
     weather_main = weather_main.lower()
-
+    
     if any(x in weather_main for x in ['clear', 'sun']):
-        return "Suitable for harvesting or drying crops"
+        return "Cocok untuk panen atau pengeringan hasil panen"
     elif any(x in weather_main for x in ['cloud', 'fog', 'mist', 'haze']):
-        return "Good for planting seedlings or spraying pesticides"
+        return "Baik untuk menanam bibit atau penyemprotan pestisida"
     elif any(x in weather_main for x in ['rain', 'drizzle', 'shower']):
-        return "Avoid fertilizing and spraying pesticides"
+        return "Hindari pemupukan dan penyemprotan pestisida"
     elif any(x in weather_main for x in ['thunder', 'storm']):
-        return "Ensure good land drainage to prevent waterlogging"
+        return "Pastikan drainase lahan baik untuk mencegah genangan"
     else:
-        return "Monitor plant conditions regularly"
+        return "Pantau kondisi tanaman secara berkala"
+# def get_farming_advice(weather_main):
+#     """Get farming advice based on weather condition"""
+#     weather_main = weather_main.lower()
+
+#     if any(x in weather_main for x in ['clear', 'sun']):
+#         return "Suitable for harvesting or drying crops"
+#     elif any(x in weather_main for x in ['cloud', 'fog', 'mist', 'haze']):
+#         return "Good for planting seedlings or spraying pesticides"
+#     elif any(x in weather_main for x in ['rain', 'drizzle', 'shower']):
+#         return "Avoid fertilizing and spraying pesticides"
+#     elif any(x in weather_main for x in ['thunder', 'storm']):
+#         return "Ensure good land drainage to prevent waterlogging"
+#     else:
+#         return "Monitor plant conditions regularly"
 
 def get_mock_weather_data():
     """Return mock weather data for testing"""
@@ -727,37 +687,51 @@ def get_mock_weather_data():
     }
 
 def get_deepseek_response(prompt):
-    """Get response from DeepSeek API"""
     try:
+        corrected_prompt = correct_user_question(prompt)
+
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
             "Content-Type": "application/json"
         }
-        
+
         payload = {
             "model": "deepseek-chat",
             "messages": [
-                # {"role": "system", "content": "Anda adalah asisten pertanian PeTaniku."},
-                {"role": "system", "content": "You are PeTaniku's farming assistant."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": """Anda adalah Asisten Pertanian PeTaniku yang ahli di bidang:
+- Pertanian dan perkebunan
+- Cuaca dan iklim untuk pertanian
+- Pengelolaan tanaman dan tanah
+- Teknologi pertanian
+
+Bantu pengguna dengan:
+1. Berikan jawaban mendetail untuk pertanyaan pertanian
+2. Jika pertanyaan di luar topik, jawab dengan sopan:
+   \"Maaf, saya hanya dapat membantu tentang pertanian. Ada yang bisa saya bantu terkait tanaman, cuaca pertanian, atau hal terkait?\"
+
+Gaya respons:
+- Gunakan bahasa sederhana dan praktis
+- Format jelas dengan paragraf terpisah
+- Hindari jargon teknis berlebihan"""},
+                {"role": "user", "content": corrected_prompt}
             ],
             "temperature": 0.7,
             "max_tokens": 1000
         }
-        
+
         response = requests.post(
             "https://api.deepseek.com/v1/chat/completions",
             headers=headers,
             json=payload
         )
-        
+
         if response.status_code == 200:
             result = response.json()
             return result['choices'][0]['message']['content']
         else:
             logger.error(f"DeepSeek API error: {response.text}")
             return "Maaf, saya tidak bisa memberikan jawaban saat ini."
-            
+
     except Exception as e:
         logger.error(f"Error getting DeepSeek response: {e}")
         return "Maaf, terjadi kesalahan dalam memproses permintaan Anda."
