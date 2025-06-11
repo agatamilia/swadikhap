@@ -91,7 +91,7 @@ migrate = Migrate(app, db)
 
 # Whisper model initialization
 try:
-    WHISPER_MODEL = whisper.load_model("base")
+    WHISPER_MODEL = whisper.load_model("small")
     logging.info("Whisper model loaded successfully")
 except Exception as e:
     logging.error(f"Failed to load Whisper model: {e}")
@@ -364,12 +364,27 @@ def transcribe_audio():
         if validation.get('error'):
             return jsonify(validation), 400
 
-        result = WHISPER_MODEL.transcribe(filepath, language="id", task="transcribe")
-        transcription = result.get("text", "").strip()
+        # Deteksi bahasa terlebih dahulu
+        audio = whisper.load_audio(filepath)
+        audio = whisper.pad_or_trim(audio)
+        mel = whisper.log_mel_spectrogram(audio).to(WHISPER_MODEL.device)
+        _, probs = WHISPER_MODEL.detect_language(mel)
+        detected_lang_code = max(probs, key=probs.get)
+        detected_lang_prob = round(probs[detected_lang_code] * 100, 2)
 
+        # Transkripsi dengan asumsi konteks bahasa lokal
+        result = WHISPER_MODEL.transcribe(
+            filepath,
+            language="id",
+            task="transcribe",
+            initial_prompt="Bahasa Indonesia, Jawa, dan Sunda digunakan di percakapan ini."
+        )
+
+        transcription = result.get("text", "").strip()
         if not transcription:
             return jsonify({"error": "No speech detected"}), 400
 
+        # Tambahkan pesan ke database
         message = Message(
             id=str(uuid.uuid4()),
             session_id=session_id,
@@ -387,7 +402,7 @@ def transcribe_audio():
 
         db.session.commit()
 
-        # Tambahkan respons dari DeepSeek
+        # Jawaban dari DeepSeek
         response_text = get_deepseek_response(transcription)
         assistant_message = Message(
             id=str(uuid.uuid4()),
@@ -402,6 +417,8 @@ def transcribe_audio():
 
         return jsonify({
             "status": "success",
+            "detected_language": detected_lang_code,
+            "language_confidence": detected_lang_prob,
             "transcription": transcription,
             "response": response_text,
             "audio_url": f"/uploads/temp/{device_id}/audio/{filename}"
@@ -555,8 +572,8 @@ def chat():
         assistant_raw_response = get_deepseek_response(message)
         
         # Format ulang respons
-        formatted_message = assistant_raw_response.replace('###', '').replace('**', '*')
-        clean_tts_message = formatted_message.replace('*', '')
+        formatted_message = assistant_raw_response.replace('###', '').replace('*', '').strip()
+        clean_tts_message = formatted_message
 
         # Simpan ke database jika session_id tersedia
         if session_id:
@@ -711,9 +728,22 @@ def correct_user_question(raw_question):
         logger.error(f"Correction error: {e}")
         return raw_question
 
-def get_deepseek_response(prompt):
+def get_deepseek_response(prompt, session_id=None, device_id=None):
     try:
         corrected_prompt = correct_user_question(prompt)
+
+        # Siapkan riwayat (jika session tersedia)
+        messages_history = []
+        if session_id and device_id:
+            history = Message.query.filter_by(session_id=session_id, device_id=device_id) \
+                                   .order_by(Message.timestamp.asc()) \
+                                   .limit(10) \
+                                   .all()
+            for msg in history:
+                messages_history.append({"role": msg.role, "content": msg.content})
+
+        # Tambahkan pertanyaan user terbaru
+        messages_history.append({"role": "user", "content": corrected_prompt})
 
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -723,23 +753,8 @@ def get_deepseek_response(prompt):
         payload = {
             "model": "deepseek-chat",
             "messages": [
-                {"role": "system", "content": """Anda adalah Asisten Pertanian PeTaniku yang ahli di bidang:
-- Pertanian dan perkebunan
-- Cuaca dan iklim untuk pertanian
-- Pengelolaan tanaman dan tanah
-- Teknologi pertanian
-
-Bantu pengguna dengan:
-1. Berikan jawaban mendetail untuk pertanyaan pertanian
-2. Jika pertanyaan di luar topik, jawab dengan sopan:
-   \"Maaf, saya hanya dapat membantu tentang pertanian. Ada yang bisa saya bantu terkait tanaman, cuaca pertanian, atau hal terkait?\"
-
-Gaya respons:
-- Gunakan bahasa sederhana dan praktis
-- Format jelas dengan paragraf terpisah
-- Hindari jargon teknis berlebihan"""},
-                {"role": "user", "content": corrected_prompt}
-            ],
+                {"role": "system", "content": """Anda adalah Asisten Pertanian PeTaniku..."""}
+            ] + messages_history,
             "temperature": 0.7,
             "max_tokens": 1000
         }

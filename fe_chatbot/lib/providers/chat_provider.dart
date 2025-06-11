@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'dart:io' show File;
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import '../services/image_service.dart';
 import 'session_provider.dart';
 import '../services/tts_service.dart';
 import '../services/storage_service.dart';
+
 
 class ChatProvider with ChangeNotifier {
   final List<ChatMessage> _messages = [];
@@ -226,82 +228,32 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  Future<void> _processImage(String sessionId) async {
-    if (_pendingImage == null) return;
-
-    _isLoading = true;
-    notifyListeners();
-
-    try {
-      final response = await _imageService.uploadAndAnalyzeImage(
-        _pendingImage!,
-        sessionId,
-        _deviceId,
-      );
-
-      final label = response['detected'];
-      final confidence = response['confidence'];
-      final explanation =
-          response['explanation'] ?? "Tidak ditemukan penyakit.";
-
-      String messageText = (label != null)
-          ? "Deteksi: *$label* ($confidence%)\n\n$explanation"
-          : explanation;
-
-      if (response.containsKey("image_url")) {
-        final botMessage = ChatMessage(
-          content: messageText,
-          role: MessageRole.assistant,
-          imageUrl: response["image_url"],
-        );
-        _messages.add(botMessage);
-        notifyListeners();
-        await _apiService.saveMessage(botMessage, sessionId, _deviceId);
-
-        if (_useVoiceOutput) {
-          _speakText(botMessage.content);
-        }
-      } else {
-        await _addBotMessage(messageText, sessionId);
-      }
-
-      _pendingImage = null;
-    } catch (e) {
-      print('Error processing image: $e');
-      await _addBotMessage('Error analyzing image: ${e.toString()}', sessionId);
-      _pendingImage = null;
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
-
   String _getErrorMessage(dynamic error) {
     return "Terjadi kesalahan tak terduga. Silakan coba lagi.";
   }
 
   Future<void> _addBotMessage(String content, String sessionId) async {
-    final cleanContent = content.replaceAll('*', '');
     final botMessage = ChatMessage(
       content: content,
-      cleanContent: cleanContent,
+      cleanContent: content.replaceAll('*', ''),
       role: MessageRole.assistant,
     );
 
     _messages.add(botMessage);
+    notifyListeners();
 
     try {
       await _apiService.saveMessage(botMessage, sessionId, _deviceId);
     } catch (e) {
-      print('Failed to save bot message: $e');
+      print('Failed to save bot message: \$e');
     }
 
     _isLoading = false;
-    notifyListeners();
 
     if (_useVoiceOutput) {
-      _speakText(botMessage.cleanContent ?? cleanContent);
+      _speakText(botMessage.cleanContent ?? content);
     }
+    notifyListeners();
   }
 
   Future<void> _speakText(String text) async {
@@ -380,6 +332,9 @@ class ChatProvider with ChangeNotifier {
         _messages.add(assistantMessage);
         notifyListeners();
         await _apiService.saveMessage(assistantMessage, sessionId, deviceId);
+        if (_useVoiceOutput) {
+        _speakText(assistantMessage.content);
+      }
       }
     } catch (e) {
       print('Error stopping listening: $e');
@@ -399,6 +354,11 @@ class ChatProvider with ChangeNotifier {
   void cancelListening() {
     _isListening = false;
     _audioService.stopRecording();
+    notifyListeners();
+  }
+
+  void setLoading(bool value) {
+    _isLoading = value;
     notifyListeners();
   }
 
@@ -538,6 +498,105 @@ class ChatProvider with ChangeNotifier {
       }
     }
   }
+  
+  Future<void> _processImage(String sessionId) async {
+    if (_pendingImage == null) return;
+
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      // Ubah ke .jpg jika perlu
+      final jpgImage = await _convertToJpgIfNeeded(_pendingImage!);
+
+      // Kompres gambar setelah dijamin .jpg
+      final compressed = await _compressImage(jpgImage);
+
+      final start = DateTime.now(); // waktu mulai
+      final response = await _imageService.uploadAndAnalyzeImage(
+        compressed,
+        sessionId,
+        _deviceId,
+      );
+      final end = DateTime.now();
+      print("Waktu analisis gambar: ${end.difference(start).inMilliseconds} ms");
+
+      final label = response['detected'];
+      final confidence = response['confidence'];
+      final explanation =
+          response['explanation'] ?? "Tidak ditemukan penyakit.";
+
+      String messageText = (label != null)
+          ? "Deteksi: *$label* ($confidence%)\n\n$explanation"
+          : explanation;
+
+      if (response.containsKey("image_url")) {
+        final botMessage = ChatMessage(
+          content: messageText,
+          role: MessageRole.assistant,
+          imageUrl: response["image_url"],
+        );
+        _messages.add(botMessage);
+        notifyListeners();
+        await _apiService.saveMessage(botMessage, sessionId, _deviceId);
+
+        if (_useVoiceOutput) {
+          _speakText(botMessage.content);
+        }
+      } else {
+        await _addBotMessage(messageText, sessionId);
+      }
+
+      _pendingImage = null;
+    } catch (e) {
+      print('Error processing image: $e');
+      await _addBotMessage('Error analyzing image: ${e.toString()}', sessionId);
+      _pendingImage = null;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<File> _convertToJpgIfNeeded(File imageFile) async {
+    final originalPath = imageFile.path;
+
+    // Jika sudah .jpg atau .jpeg, langsung return
+    if (originalPath.endsWith('.jpg') || originalPath.endsWith('.jpeg')) {
+      return imageFile;
+    }
+
+    // Ubah ekstensi ke .jpg
+    final newPath = path.setExtension(originalPath, '.jpg');
+    final renamedFile = await imageFile.copy(newPath);
+    return renamedFile;
+  }
+  Future<File> _compressImage(File file) async {
+    final targetPath = '${file.parent.path}/compressed_${path.basename(file.path)}';
+
+    final result = await FlutterImageCompress.compressAndGetFile(
+      file.absolute.path,
+      targetPath,
+      quality: 70, // ubah sesuai kebutuhan
+    );
+
+    if (result != null) {
+      return File(result.path);
+    }  
+    // Jika gagal kompresi, kembalikan file asli
+    return file;
+  }
+  void addLocalImageMessage(File image, String text) {
+  final newMessage = ChatMessage(
+    id: DateTime.now().millisecondsSinceEpoch.toString(),
+    content: text,
+    role: MessageRole.user,
+    imageUrl: image.path,
+  );
+
+  _messages.add(newMessage);
+  notifyListeners();
+}
 
   @override
   void dispose() {

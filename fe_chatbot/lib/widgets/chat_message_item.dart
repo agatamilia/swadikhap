@@ -5,11 +5,13 @@ import '../models/message.dart';
 class ChatMessageItem extends StatelessWidget {
   final ChatMessage message;
   final bool isTyping;
+  final Widget Function(String)? contentBuilder;
 
   const ChatMessageItem({
     Key? key,
     required this.message,
     this.isTyping = false,
+    this.contentBuilder,
   }) : super(key: key);
 
   @override
@@ -48,7 +50,7 @@ class ChatMessageItem extends StatelessWidget {
                       child: Center(
                         child: Text(
                           isUser ? "👨‍🌾" : "🤖",
-                          style: const TextStyle(fontSize: 16),
+                          style: const TextStyle(fontSize: 18),
                         ),
                       ),
                     ),
@@ -77,6 +79,7 @@ class ChatMessageItem extends StatelessWidget {
   
 Widget _buildMessageContent(BuildContext context) {
   final isUser = message.role == MessageRole.user;
+
   if (message.imageUrl != null) {
     final isNetworkImage = message.imageUrl!.startsWith('http');
 
@@ -104,25 +107,31 @@ Widget _buildMessageContent(BuildContext context) {
                 ),
         ),
         const SizedBox(height: 8),
-        if (!isUser)
-          RichText(
-            text: TextSpan(
-              style: TextStyle(
-                color: Colors.black,
-                fontSize: 16,
-              ),
-              children: _parseBoldText(message.content),
-            ),
-          )
+        if (!isUser && contentBuilder != null)
+          contentBuilder!(message.content)
         else
-          Text(message.content, style: const TextStyle(color: Colors.white, fontSize: 16)),
+          Text(
+            message.content,
+            style: TextStyle(
+              color: isUser ? Colors.white : Colors.black,
+              fontSize: 18,
+            ),
+          ),
       ],
     );
   }
 
+  if (!isUser && contentBuilder != null) {
+    return DefaultTextStyle(
+      style: const TextStyle(fontSize: 18, color: Colors.black),
+      child: contentBuilder!(message.content),
+    );
+  }
+
+
   return Text(
     message.content,
-    style: TextStyle(color: isUser ? Colors.white : Colors.black, fontSize: 16),
+    style: TextStyle(color: isUser ? Colors.white : Colors.black, fontSize: 18),
   );
 }
 
@@ -135,7 +144,7 @@ List<TextSpan> _parseBoldText(String text) {
       spans.add(
         TextSpan(
           text: parts[i],
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18,),
         ),
       );
     } else if (parts[i].isNotEmpty) { // Bagian normal

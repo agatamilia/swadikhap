@@ -61,10 +61,12 @@ class TTSService {
   Future<void> stop() async {
     try {
       await _flutterTts.stop();
+      _isSpeaking = false;
     } catch (e) {
       print('Error stopping TTS: $e');
     }
   }
+
   
   Future<void> dispose() async {
     try {

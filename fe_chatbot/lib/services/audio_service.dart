@@ -105,6 +105,14 @@ class AudioService {
       return null;
     }
   }
+  Future<void> startRecordingWithTimeout({Duration maxDuration = const Duration(seconds: 60)}) async {
+    await startListening();
+    Future.delayed(maxDuration, () async {
+      if (await _audioRecorder.isRecording()) {
+        await stopRecording();
+      }
+    });
+  }
 
   // Mendapatkan file rekaman
   File? getRecordingFile() {

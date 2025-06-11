@@ -8,7 +8,7 @@ class ApiConfig {
   
 
   // Ngrok configuration (only used when useNgrok is true)
-  static const String ngrokSubdomain = '9867-180-244-127-206'; // Replace with your ngrok subdomain
+  static const String ngrokSubdomain = 'e0bc-2404-c0-2450-00-340d-9c11'; // Replace with your ngrok subdomain
   static const String ngrokRegion = 'in'; // Region code (us, eu, ap, au, sa, jp, in)
 
   // Server URLs

@@ -22,7 +22,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ),
     OnboardingPage(
       title: "Analisis Gambar Tanaman",
-      description: "Unggah foto tanaman Anda untuk mendapatkan analisis kondisi dan saran perawatan.",
+      description: "Unggah foto tanaman Anda untuk mendapatkan analisis penyakit tanaman dan saran perawatan.",
       image: "📷",
     ),
     OnboardingPage(
@@ -88,7 +88,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       "Lewati",
                       style: TextStyle(
                         color: Colors.green[700],
-                        fontSize: 16,
+                        fontSize: 18,
                       ),
                     ),
                   ),
@@ -143,7 +143,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                     child: Text(
                       _currentPage < _pages.length - 1 ? "Lanjut" : "Mulai",
-                      style: const TextStyle(fontSize: 16),
+                      style: const TextStyle(fontSize: 18),
                     ),
                   ),
                 ],
@@ -189,7 +189,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           Text(
             page.description,
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 18,
               color: Colors.green[700],
             ),
             textAlign: TextAlign.center,

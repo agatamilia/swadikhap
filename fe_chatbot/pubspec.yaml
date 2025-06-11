@@ -55,6 +55,7 @@ dependencies:
   device_info_plus: ^9.1.1
   flutter_image_compress: ^2.4.0
   image: ^3.0.1 
+  flutter_linkify: ^6.0.0
 
 
 dev_dependencies:
