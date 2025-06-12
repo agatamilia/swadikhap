@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:peTaniku/services/location_service.dart';
+import './services/location_service.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'services/device_service.dart';

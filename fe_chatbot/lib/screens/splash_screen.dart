@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:peTaniku/screens/onboarding_screen.dart';
+import '../screens/onboarding_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);

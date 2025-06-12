@@ -22,7 +22,7 @@
     
     
     <application
-        android:label="peTaniku"
+        android:label="peTaniku2"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

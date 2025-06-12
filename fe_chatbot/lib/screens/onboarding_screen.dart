@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:peTaniku/screens/session_list_screen.dart';
+import '../screens/session_list_screen.dart';
 import 'package:video_player/video_player.dart';
 
 class OnboardingScreen extends StatefulWidget {

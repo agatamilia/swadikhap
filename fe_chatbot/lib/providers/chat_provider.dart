@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
-import 'package:peTaniku/services/device_service.dart';
+import '../services/device_service.dart';
 import '../models/message.dart';
 import '../services/api_service.dart';
 import '../services/audio_service.dart';
