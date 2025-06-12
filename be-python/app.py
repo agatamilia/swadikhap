@@ -80,7 +80,7 @@ except Exception as e:
     WHISPER_MODEL = None
 
 with app.app_context():
-    db.drop_all()  # WARNING: Deletes all data!
+    # db.drop_all()  # WARNING: Deletes all data!
     db.create_all()
 
 if not os.access(UPLOAD_FOLDER, os.W_OK):
@@ -518,110 +518,110 @@ def load_whisper_model():
 
 app.whisper_model = load_whisper_model()
 
-@app.route('/api/upload', methods=['POST'])
-def upload_image():
-    if 'image' not in request.files:
-        return jsonify({"error": "No image file provided"}), 400
+# @app.route('/api/upload', methods=['POST'])
+# def upload_image():
+#     if 'image' not in request.files:
+#         return jsonify({"error": "No image file provided"}), 400
 
-    image_file = request.files['image']
-    if image_file.filename == '':
-        return jsonify({"error": "Empty filename"}), 400
+#     image_file = request.files['image']
+#     if image_file.filename == '':
+#         return jsonify({"error": "Empty filename"}), 400
         
-    try:
-        # Save file
-        filename = secure_filename(f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}{os.path.splitext(image_file.filename)[1]}")
-        filepath = os.path.join(UPLOAD_IMAGE_FOLDER, filename)
-        image_file.save(filepath)
+#     try:
+#         # Save file
+#         filename = secure_filename(f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}{os.path.splitext(image_file.filename)[1]}")
+#         filepath = os.path.join(UPLOAD_IMAGE_FOLDER, filename)
+#         image_file.save(filepath)
         
-        # Process with DeepSeek
-        # Read image and convert to base64
-        with open(filepath, "rb") as img_file:
-            img_base64 = base64.b64encode(img_file.read()).decode("utf-8")
+#         # Process with DeepSeek
+#         # Read image and convert to base64
+#         with open(filepath, "rb") as img_file:
+#             img_base64 = base64.b64encode(img_file.read()).decode("utf-8")
         
-        # Send to DeepSeek API with image
-        headers = {
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            "Content-Type": "application/json"
-        }
+#         # Send to DeepSeek API with image
+#         headers = {
+#             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+#             "Content-Type": "application/json"
+#         }
         
-        payload = {
-            "model": "deepseek-vision",
-            "messages": [
-                {"role": "system", "content": "Anda adalah asisten pertanian PeTaniku. Analisis gambar pertanian ini dan berikan informasi yang relevan."},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "Analisis gambar tanaman ini. Apa jenisnya? Apakah ada hama atau penyakit? Berikan saran perawatan."},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}}
-                ]}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 1000
-        }
+#         payload = {
+#             "model": "deepseek-vision",
+#             "messages": [
+#                 {"role": "system", "content": "Anda adalah asisten pertanian PeTaniku. Analisis gambar pertanian ini dan berikan informasi yang relevan."},
+#                 {"role": "user", "content": [
+#                     {"type": "text", "text": "Analisis gambar tanaman ini. Apa jenisnya? Apakah ada hama atau penyakit? Berikan saran perawatan."},
+#                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}}
+#                 ]}
+#             ],
+#             "temperature": 0.7,
+#             "max_tokens": 1000
+#         }
         
-        session_id = request.form.get('session_id')
+#         session_id = request.form.get('session_id')
         
-        # Call DeepSeek API
-        response = requests.post(
-            "https://api.deepseek.com/v1/chat/completions",
-            headers=headers,
-            json=payload
-        )
+#         # Call DeepSeek API
+#         response = requests.post(
+#             "https://api.deepseek.com/v1/chat/completions",
+#             headers=headers,
+#             json=payload
+#         )
         
-        if response.status_code != 200:
-            logger.error(f"DeepSeek API error: {response.text}")
-            return jsonify({"error": "Failed to analyze image"}), 500
+#         if response.status_code != 200:
+#             logger.error(f"DeepSeek API error: {response.text}")
+#             return jsonify({"error": "Failed to analyze image"}), 500
             
-        result = response.json()
-        analysis = result['choices'][0]['message']['content']
+#         result = response.json()
+#         analysis = result['choices'][0]['message']['content']
         
-        # Save in database if session_id provided
-        if session_id:
-            try:
-                session = db.session.get(Session, session_id)
-                if session:
-                    current_time = int(datetime.now().timestamp() * 1000)
+#         # Save in database if session_id provided
+#         if session_id:
+#             try:
+#                 session = db.session.get(Session, session_id)
+#                 if session:
+#                     current_time = int(datetime.now().timestamp() * 1000)
                     
-                    # Save image message with relative path
-                    image_message = Message(
-                        id=str(uuid.uuid4()),
-                        session_id=session_id,
-                        content="(Gambar pertanian)",
-                        role='user',
-                        timestamp=current_time,
-                        image_path=f"/uploads/images/{filename}"
-                    )
+#                     # Save image message with relative path
+#                     image_message = Message(
+#                         id=str(uuid.uuid4()),
+#                         session_id=session_id,
+#                         content="(Gambar pertanian)",
+#                         role='user',
+#                         timestamp=current_time,
+#                         image_path=f"/uploads/images/{filename}"
+#                     )
                     
-                    # Save analysis response
-                    analysis_message = Message(
-                        id=str(uuid.uuid4()),
-                        session_id=session_id,
-                        content=analysis,
-                        role='assistant',
-                        timestamp=current_time + 1
-                    )
+#                     # Save analysis response
+#                     analysis_message = Message(
+#                         id=str(uuid.uuid4()),
+#                         session_id=session_id,
+#                         content=analysis,
+#                         role='assistant',
+#                         timestamp=current_time + 1
+#                     )
                     
-                    # Update session timestamp
-                    session.updated_at = current_time
+#                     # Update session timestamp
+#                     session.updated_at = current_time
                     
-                    db.session.add_all([image_message, analysis_message])
-                    db.session.commit()
-            except Exception as e:
-                logger.error(f"Error saving image analysis to database: {e}")
-                db.session.rollback()
+#                     db.session.add_all([image_message, analysis_message])
+#                     db.session.commit()
+#             except Exception as e:
+#                 logger.error(f"Error saving image analysis to database: {e}")
+#                 db.session.rollback()
         
-        return jsonify({
-            "status": "success",
-            "analysis": analysis,
-            "image_path": f"/uploads/images/{filename}"
-        })
+#         return jsonify({
+#             "status": "success",
+#             "analysis": analysis,
+#             "image_path": f"/uploads/images/{filename}"
+#         })
         
-    except Exception as e:
-        logger.error(f"Image processing error: {str(e)}")
-        return jsonify({"error": "Image processing failed"}), 500
+#     except Exception as e:
+#         logger.error(f"Image processing error: {str(e)}")
+#         return jsonify({"error": "Image processing failed"}), 500
 
-# Serve uploaded images
-@app.route('/uploads/images/<filename>')
-def serve_image(filename):
-    return send_from_directory(UPLOAD_IMAGE_FOLDER, filename)
+# # Serve uploaded images
+# @app.route('/uploads/images/<filename>')
+# def serve_image(filename):
+#     return send_from_directory(UPLOAD_IMAGE_FOLDER, filename)
 
 def map_weather_condition(weather_main):
     """Map OpenWeather conditions to our frontend conditions"""
@@ -688,7 +688,7 @@ def get_mock_weather_data():
 
 def get_deepseek_response(prompt):
     try:
-        corrected_prompt = correct_user_question(prompt)
+        # corrected_prompt = correct_user_question(prompt)
 
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -713,7 +713,7 @@ Gaya respons:
 - Gunakan bahasa sederhana dan praktis
 - Format jelas dengan paragraf terpisah
 - Hindari jargon teknis berlebihan"""},
-                {"role": "user", "content": corrected_prompt}
+                {"role": "user", "content": prompt}
             ],
             "temperature": 0.7,
             "max_tokens": 1000

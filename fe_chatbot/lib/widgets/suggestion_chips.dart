@@ -20,20 +20,20 @@ class SuggestionChips extends StatelessWidget {
   }
   
   List<Widget> _buildSuggestions() {
-    // final suggestions = [
-    //   'Teknik menanam padi',
-    //   'Bagaimana mengatasi hama?',
-    //   'Prediksi cuaca minggu ini',
-    //   'Pupuk terbaik untuk jagung',
-    //   'Musim tanam terbaik',
-    // ];
     final suggestions = [
-      'Rice planting techniques',
-      'How to deal with pests?',
-      'Weather forecast for this week',
-      'Best fertilizer for corn',
-      'Best planting season',
+      'Teknik menanam padi',
+      'Bagaimana mengatasi hama?',
+      'Prediksi cuaca minggu ini',
+      'Pupuk terbaik untuk jagung',
+      'Musim tanam terbaik',
     ];
+    // final suggestions = [
+    //   'Rice planting techniques',
+    //   'How to deal with pests?',
+    //   'Weather forecast for this week',
+    //   'Best fertilizer for corn',
+    //   'Best planting season',
+    // ];
     
     return suggestions.map((suggestion) {
       return Padding(

@@ -36,8 +36,8 @@ class VoiceInputOverlay extends StatelessWidget {
               const _PulsingMic(),
               const SizedBox(height: 24),
               const Text(
-                // "Mendengarkan...",
-                "Listening...",
+                "Mendengarkan...",
+                // "Listening...",
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -45,8 +45,8 @@ class VoiceInputOverlay extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               const Text(
-                // "Silakan bicara dengan jelas",
-                "Please speak clearly.",
+                "Silakan bicara dengan jelas",
+                // "Please speak clearly.",
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.grey,
@@ -62,8 +62,8 @@ class VoiceInputOverlay extends StatelessWidget {
                       backgroundColor: Colors.grey[200],
                       foregroundColor: Colors.black,
                     ),
-                    // child: const Text("Batal"),
-                    child: const Text("cancel"),
+                    child: const Text("Batal"),
+                    // child: const Text("cancel"),
                   ),
                   ElevatedButton(
                     onPressed: onFinish,
@@ -71,8 +71,8 @@ class VoiceInputOverlay extends StatelessWidget {
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
                     ),
-                    // child: const Text("Selesai"),
-                    child: const Text("Done"),
+                    child: const Text("Selesai"),
+                    // child: const Text("Done"),
                   ),
                 ],
               ),
