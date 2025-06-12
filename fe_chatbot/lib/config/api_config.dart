@@ -7,7 +7,7 @@ class ApiConfig {
   static const bool isProduction = false;
   
   // Ngrok Configuration
-  static const String ngrokSubdomain = '0871-114-122-84-120';
+  static const String ngrokSubdomain = '17f1-182-2-42-69';
   static const String ngrokRegion = 'ap'; 
   
   // Server URLs

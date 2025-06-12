@@ -413,12 +413,12 @@ Widget _buildWelcomeScreen() {
                     hintText: chatProvider.hasImagePending 
                         ? "Ketik pertanyaan tentang gambar ini..." 
                         : "Tanyakan sesuatu tentang pertanian...",
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.image),
-                      onPressed: chatProvider.isLoading 
-                          ? null 
-                          : () => chatProvider.pickImage(context),
-                    ),
+                    // suffixIcon: IconButton(
+                    //   icon: const Icon(Icons.image),
+                    //   onPressed: chatProvider.isLoading 
+                    //       ? null 
+                    //       : () => chatProvider.pickImage(context),
+                    // ),
                   ),
                   enabled: !chatProvider.isListening && !chatProvider.isLoading,
                   onSubmitted: (text) => _handleSubmitted(context, text),

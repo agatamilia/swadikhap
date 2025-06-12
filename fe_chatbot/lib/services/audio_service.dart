@@ -10,141 +10,125 @@ class AudioService {
   bool _isPlayerInitialized = false;
   String? _recordingPath;
 
-  // Initialize the recorder
+  // Inisialisasi perekam
   Future<void> initRecorder() async {
     if (!_isRecorderInitialized) {
-      print('Initializing audio recorder');
+      print('Memulai inisialisasi perekam audio');
       bool hasPermission = await PermissionService.hasMicrophonePermission();
       
       if (!hasPermission) {
-        print('Requesting microphone permission');
+        print('Meminta izin mikrofon');
         hasPermission = await PermissionService.requestMicrophonePermission();
         if (!hasPermission) {
-          print('Microphone permission denied');
-          throw Exception('Microphone permission not granted');
+          print('Izin mikrofon ditolak');
+          throw Exception('Izin mikrofon tidak diberikan');
         }
       }
       
-      print('Opening recorder');
+      print('Membuka perekam');
       await _recorder.openRecorder();
       _isRecorderInitialized = true;
-      print('Recorder initialized successfully');
+      print('Perekam berhasil diinisialisasi');
     }
   }
 
-  // Initialize the player
+  // Inisialisasi pemutar
   Future<void> initPlayer() async {
     if (!_isPlayerInitialized) {
-      print('Initializing audio player');
+      print('Memulai inisialisasi pemutar audio');
       await _player.openPlayer();
       _isPlayerInitialized = true;
-      print('Player initialized successfully');
+      print('Pemutar berhasil diinisialisasi');
     }
   }
 
-  // Start recording
-  // Future<void> startRecording() async {
-  //   if (!_isRecorderInitialized) {
-  //     print('Initializing recorder before starting recording');
-  //     await initRecorder();
-  //   }
+  // Mulai merekam
+  Future<void> startRecording() async {
+    if (!_isRecorderInitialized) {
+      await initRecorder();
+    }
     
-  //   print('Getting temporary directory for recording');
-  //   Directory tempDir = await getTemporaryDirectory();
-  //   _recordingPath = '${tempDir.path}/recording.wav';
+    Directory tempDir = await getTemporaryDirectory();
+    _recordingPath = '${tempDir.path}/recording_${DateTime.now().millisecondsSinceEpoch}.wav';
     
-  //   print('Starting recording to: $_recordingPath');
-  //   await _recorder.startRecorder(
-  //     toFile: _recordingPath,
-  //     codec: Codec.pcm16WAV,
-  //   );
-  //   print('Recording started');
-  // }
-Future<void> startRecording() async {
-  if (!_isRecorderInitialized) {
-    await initRecorder();
+    await _recorder.startRecorder(
+      toFile: _recordingPath,
+      codec: Codec.pcm16WAV,
+      sampleRate: 16000,
+      numChannels: 1,
+      bitRate: 256000,
+    );
   }
-  
-  Directory tempDir = await getTemporaryDirectory();
-  _recordingPath = '${tempDir.path}/recording_${DateTime.now().millisecondsSinceEpoch}.wav';
-  
-  await _recorder.startRecorder(
-    toFile: _recordingPath,
-    codec: Codec.pcm16WAV,
-    sampleRate: 16000, // Whisper prefers 16kHz sample rate
-    numChannels: 1, // Mono audio
-    bitRate: 256000, // Higher quality
-  );
-}
-  // Stop recording
+
+  // Hentikan perekaman
   Future<String?> stopRecording() async {
     if (_recorder.isRecording) {
-      print('Stopping recording');
+      print('Menghentikan perekaman');
       await _recorder.stopRecorder();
-      print('Recording stopped, file saved at: $_recordingPath');
+      print('Perekaman dihentikan, file disimpan di: $_recordingPath');
       return _recordingPath;
     }
-    print('Not recording, nothing to stop');
+    print('Tidak sedang merekam, tidak ada yang dihentikan');
     return null;
   }
 
-  // Check if currently recording
+  // Cek apakah sedang merekam
   bool isRecording() {
     return _recorder.isRecording;
   }
 
-  // Play recorded audio
+  // Putar rekaman
   Future<void> playRecording() async {
     if (!_isPlayerInitialized) {
-      print('Initializing player before playback');
+      print('Inisialisasi pemutar sebelum pemutaran');
       await initPlayer();
     }
     
     if (_recordingPath != null) {
-      print('Playing recording from: $_recordingPath');
+      print('Memutar rekaman dari: $_recordingPath');
       await _player.startPlayer(
         fromURI: _recordingPath,
         codec: Codec.pcm16WAV,
       );
-      print('Playback started');
+      print('Pemutaran dimulai');
     } else {
-      print('No recording to play');
+      print('Tidak ada rekaman untuk diputar');
     }
   }
 
-  // Stop playing
+  // Hentikan pemutaran
   Future<void> stopPlaying() async {
     if (_player.isPlaying) {
-      print('Stopping playback');
+      print('Menghentikan pemutaran');
       await _player.stopPlayer();
-      print('Playback stopped');
+      print('Pemutaran dihentikan');
     }
   }
 
-  // Get recording file
+  // Ambil file rekaman
   File? getRecordingFile() {
     if (_recordingPath != null) {
-      print('Getting recording file: $_recordingPath');
+      print('Mengambil file rekaman: $_recordingPath');
       return File(_recordingPath!);
     }
-    print('No recording file available');
+    print('Tidak ada file rekaman yang tersedia');
     return null;
   }
 
-  // Dispose resources
+  // Melepas sumber daya
   Future<void> dispose() async {
-    print('Disposing audio resources');
+    print('Melepas sumber daya audio');
     if (_isRecorderInitialized) {
       await _recorder.closeRecorder();
       _isRecorderInitialized = false;
-      print('Recorder disposed');
+      print('Perekam dilepas');
     }
     
     if (_isPlayerInitialized) {
       await _player.closePlayer();
       _isPlayerInitialized = false;
-      print('Player disposed');
+      print('Pemutar dilepas');
     }
-    print('Audio resources disposed');
+    print('Sumber daya audio telah dilepas');
   }
 }

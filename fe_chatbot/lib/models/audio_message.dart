@@ -1,20 +1,3 @@
-// // models/audio_message.dart
-// class AudioMessage {
-//   final String id;
-//   final String filePath;
-//   final String transcription;
-//   final DateTime createdAt;
-
-//   AudioMessage({
-//     String? id,
-    
-//     required this.filePath,
-//     this.transcription = '',
-//     DateTime? createdAt,
-//   }) : 
-//     id = id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-//     createdAt = createdAt ?? DateTime.now();
-// }
 class AudioMessage {
   final String id;
   final String filePath;

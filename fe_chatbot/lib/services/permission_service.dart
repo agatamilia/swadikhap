@@ -2,149 +2,150 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class PermissionService {
-// Request location permission
+  // Meminta izin lokasi
   static Future<bool> requestLocationPermission() async {
-    print('Requesting location permission');
-    
-    // First check if location service is enabled
+    print('Meminta izin lokasi');
+
+    // Cek terlebih dahulu apakah layanan lokasi aktif
     bool serviceEnabled = await Permission.locationWhenInUse.serviceStatus.isEnabled;
     if (!serviceEnabled) {
-      print('Location services are disabled');
+      print('Layanan lokasi tidak aktif');
       return false;
     }
-    
+
     var status = await Permission.locationWhenInUse.status;
-    print('Current location permission status: $status');
-    
+    print('Status izin lokasi saat ini: $status');
+
     if (status.isDenied) {
       status = await Permission.locationWhenInUse.request();
-      print('Location permission after request: $status');
+      print('Status izin lokasi setelah diminta: $status');
     }
-    
+
     if (status.isPermanentlyDenied) {
-      print('Location permission permanently denied');
+      print('Izin lokasi ditolak secara permanen');
       return false;
     }
-    
-    return status.isGranted;
-  }
-  // Request microphone permission
-  static Future<bool> requestMicrophonePermission() async {
-    print('Requesting microphone permission');
-    var status = await Permission.microphone.status;
-    print('Current microphone permission status: $status');
-    
-    if (status.isDenied) {
-      status = await Permission.microphone.request();
-      print('Microphone permission after request: $status');
-    }
-    
-    if (status.isPermanentlyDenied) {
-      print('Microphone permission permanently denied');
-      return false;
-    }
-    
+
     return status.isGranted;
   }
 
-  // Request storage permission
+  // Meminta izin mikrofon
+  static Future<bool> requestMicrophonePermission() async {
+    print('Meminta izin mikrofon');
+    var status = await Permission.microphone.status;
+    print('Status izin mikrofon saat ini: $status');
+
+    if (status.isDenied) {
+      status = await Permission.microphone.request();
+      print('Status izin mikrofon setelah diminta: $status');
+    }
+
+    if (status.isPermanentlyDenied) {
+      print('Izin mikrofon ditolak secara permanen');
+      return false;
+    }
+
+    return status.isGranted;
+  }
+
+  // Meminta izin penyimpanan
   static Future<bool> requestStoragePermission() async {
-    print('Requesting storage permission');
-    
-    // For Android 13+ (API level 33+), we need to request specific permissions
+    print('Meminta izin penyimpanan');
+
+    // Untuk Android 13+ (API 33+), perlu minta izin terpisah
     bool hasPhotoPermission = false;
     bool hasVideoPermission = false;
     bool hasAudioPermission = false;
-    
-    // Check for photos permission
+
+    // Cek izin foto
     if (await Permission.photos.status.isDenied) {
       final photoStatus = await Permission.photos.request();
       hasPhotoPermission = photoStatus.isGranted;
     } else {
       hasPhotoPermission = await Permission.photos.isGranted;
     }
-    
-    // Check for videos permission
+
+    // Cek izin video
     if (await Permission.videos.status.isDenied) {
       final videoStatus = await Permission.videos.request();
       hasVideoPermission = videoStatus.isGranted;
     } else {
       hasVideoPermission = await Permission.videos.isGranted;
     }
-    
-    // Check for audio permission
+
+    // Cek izin audio
     if (await Permission.audio.status.isDenied) {
       final audioStatus = await Permission.audio.request();
       hasAudioPermission = audioStatus.isGranted;
     } else {
       hasAudioPermission = await Permission.audio.isGranted;
     }
-    
-    // For older Android versions, use storage permission
+
+    // Untuk Android versi lama, gunakan izin penyimpanan umum
     var storageStatus = await Permission.storage.status;
-    print('Current storage permission status: $storageStatus');
-    
+    print('Status izin penyimpanan saat ini: $storageStatus');
+
     if (storageStatus.isDenied) {
       storageStatus = await Permission.storage.request();
-      print('Storage permission after request: $storageStatus');
+      print('Status izin penyimpanan setelah diminta: $storageStatus');
     }
-    
-    if (storageStatus.isPermanentlyDenied && 
-        !hasPhotoPermission && 
-        !hasVideoPermission && 
+
+    if (storageStatus.isPermanentlyDenied &&
+        !hasPhotoPermission &&
+        !hasVideoPermission &&
         !hasAudioPermission) {
-      print('All storage permissions permanently denied');
+      print('Semua izin penyimpanan ditolak secara permanen');
       return false;
     }
-    
-    return storageStatus.isGranted || 
-           hasPhotoPermission || 
-           hasVideoPermission || 
+
+    return storageStatus.isGranted ||
+           hasPhotoPermission ||
+           hasVideoPermission ||
            hasAudioPermission;
   }
 
-  // Check if location permission is granted
+  // Cek apakah izin lokasi sudah diberikan
   static Future<bool> hasLocationPermission() async {
     return await Permission.locationWhenInUse.isGranted;
   }
 
-  // Check if microphone permission is granted
+  // Cek apakah izin mikrofon sudah diberikan
   static Future<bool> hasMicrophonePermission() async {
     return await Permission.microphone.isGranted;
   }
 
-  // Check if storage permission is granted
+  // Cek apakah izin penyimpanan sudah diberikan
   static Future<bool> hasStoragePermission() async {
-    return await Permission.storage.isGranted || 
-           await Permission.photos.isGranted || 
-           await Permission.videos.isGranted || 
+    return await Permission.storage.isGranted ||
+           await Permission.photos.isGranted ||
+           await Permission.videos.isGranted ||
            await Permission.audio.isGranted;
   }
 
-  // Request all permissions needed for the app
+  // Meminta semua izin yang dibutuhkan aplikasi
   static Future<Map<String, bool>> requestAllPermissions() async {
     Map<String, bool> permissions = {
       'location': false,
       'microphone': false,
       'storage': false,
     };
-    
-    // Request permissions with a small delay between each to avoid overwhelming the user
+
+    // Beri jeda antar permintaan izin agar tidak membanjiri pengguna
     permissions['location'] = await requestLocationPermission();
-    print('Location permission result: ${permissions['location']}');
+    print('Hasil izin lokasi: ${permissions['location']}');
     await Future.delayed(const Duration(milliseconds: 500));
-    
+
     permissions['microphone'] = await requestMicrophonePermission();
-    print('Microphone permission result: ${permissions['microphone']}');
+    print('Hasil izin mikrofon: ${permissions['microphone']}');
     await Future.delayed(const Duration(milliseconds: 500));
-    
+
     permissions['storage'] = await requestStoragePermission();
-    print('Storage permission result: ${permissions['storage']}');
-    
+    print('Hasil izin penyimpanan: ${permissions['storage']}');
+
     return permissions;
   }
 
-  // Show permission dialog if permission is denied
+  // Tampilkan dialog izin jika izin ditolak
   static Future<void> showPermissionDialog(BuildContext context, String permissionName) async {
     return showDialog(
       context: context,
@@ -170,4 +171,3 @@ class PermissionService {
     );
   }
 }
-

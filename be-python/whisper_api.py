@@ -17,17 +17,22 @@ def setup_whisper_path():
 
 def load_model(model_name="base"):
     try:
-        print(f"Mencoba memuat model Whisper: {model_name}")
+        logger.info(f"Mencoba memuat model Whisper: {model_name}")
         import whisper
         model = whisper.load_model(model_name)
-        print("Model Whisper berhasil dimuat")
+        logger.info("Model Whisper berhasil dimuat")
         return model
     except Exception as e:
-        print(f"Gagal memuat model: {str(e)}")
+        logger.error(f"Gagal memuat model Whisper: {str(e)}")
         return None
 
 def transcribe(model, audio_path, language="id"):
     try:
+        if not os.path.exists(audio_path):
+            return {"error": "Audio file does not exist"}
+        if os.path.getsize(audio_path) < 1024:
+            return {"error": "Audio file too small"}
+
         result = model.transcribe(
             audio_path,
             language=language,
@@ -35,4 +40,5 @@ def transcribe(model, audio_path, language="id"):
         )
         return result
     except Exception as e:
+        logger.error(f"Transcription failed: {str(e)}")
         return {"error": str(e)}
