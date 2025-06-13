@@ -16,7 +16,6 @@ import 'session_provider.dart';
 import '../services/tts_service.dart';
 import '../services/storage_service.dart';
 
-
 class ChatProvider with ChangeNotifier {
   final List<ChatMessage> _messages = [];
   final ApiService _apiService = ApiService();
@@ -165,6 +164,11 @@ class ChatProvider with ChangeNotifier {
 
   void toggleVoiceOutput() {
     _useVoiceOutput = !_useVoiceOutput;
+
+    if (!_useVoiceOutput) {
+      _ttsService.stop();
+    }
+
     notifyListeners();
   }
 
@@ -333,8 +337,8 @@ class ChatProvider with ChangeNotifier {
         notifyListeners();
         await _apiService.saveMessage(assistantMessage, sessionId, deviceId);
         if (_useVoiceOutput) {
-        _speakText(assistantMessage.content);
-      }
+          _speakText(assistantMessage.content);
+        }
       }
     } catch (e) {
       print('Error stopping listening: $e');
@@ -498,7 +502,7 @@ class ChatProvider with ChangeNotifier {
       }
     }
   }
-  
+
   Future<void> _processImage(String sessionId) async {
     if (_pendingImage == null) return;
 
@@ -519,7 +523,8 @@ class ChatProvider with ChangeNotifier {
         _deviceId,
       );
       final end = DateTime.now();
-      print("Waktu analisis gambar: ${end.difference(start).inMilliseconds} ms");
+      print(
+          "Waktu analisis gambar: ${end.difference(start).inMilliseconds} ms");
 
       final label = response['detected'];
       final confidence = response['confidence'];
@@ -553,6 +558,7 @@ class ChatProvider with ChangeNotifier {
       await _addBotMessage('Error analyzing image: ${e.toString()}', sessionId);
       _pendingImage = null;
     } finally {
+      _pendingImage = null;
       _isLoading = false;
       notifyListeners();
     }
@@ -571,8 +577,10 @@ class ChatProvider with ChangeNotifier {
     final renamedFile = await imageFile.copy(newPath);
     return renamedFile;
   }
+
   Future<File> _compressImage(File file) async {
-    final targetPath = '${file.parent.path}/compressed_${path.basename(file.path)}';
+    final targetPath =
+        '${file.parent.path}/compressed_${path.basename(file.path)}';
 
     final result = await FlutterImageCompress.compressAndGetFile(
       file.absolute.path,
@@ -582,21 +590,22 @@ class ChatProvider with ChangeNotifier {
 
     if (result != null) {
       return File(result.path);
-    }  
+    }
     // Jika gagal kompresi, kembalikan file asli
     return file;
   }
-  void addLocalImageMessage(File image, String text) {
-  final newMessage = ChatMessage(
-    id: DateTime.now().millisecondsSinceEpoch.toString(),
-    content: text,
-    role: MessageRole.user,
-    imageUrl: image.path,
-  );
 
-  _messages.add(newMessage);
-  notifyListeners();
-}
+  void addLocalImageMessage(File image, String text) {
+    final newMessage = ChatMessage(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      content: text,
+      role: MessageRole.user,
+      imageUrl: image.path,
+    );
+
+    _messages.add(newMessage);
+    notifyListeners();
+  }
 
   @override
   void dispose() {

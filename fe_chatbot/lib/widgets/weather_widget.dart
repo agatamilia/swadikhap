@@ -98,7 +98,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
                           _locationName,
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: 20,
+                            fontSize: 16,
                           ),
                         ),
                       ],
@@ -144,7 +144,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
               _errorMessage,
               style: TextStyle(
                 color: Colors.red[400],
-                fontSize: 18,
+                fontSize: 16,
               ),
             ),
           ),
@@ -152,7 +152,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
             onPressed: _fetchWeather,
             child: const Text(
               'Coba Lagi',
-              style: TextStyle(fontSize: 18),
+              style: TextStyle(fontSize: 16),
             ),
           ),
         ],
@@ -178,7 +178,7 @@ class _WeatherWidgetState extends State<WeatherWidget> {
             '${_weatherData?.description ?? ''} - ${_weatherData?.advice ?? ''}',
             style: TextStyle(
               color: Colors.green[700],
-              fontSize: 18,
+              fontSize: 16,
             ),
           ),
         ),

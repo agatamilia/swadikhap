@@ -99,18 +99,25 @@ class _ChatScreenState extends State<ChatScreen> {
     _textController.clear();
     final image = chatProvider.selectedImage;
     if (image != null) {
-      chatProvider.addLocalImageMessage(image, text); // preview sebagai bubble
+      final userImageMessage = ChatMessage(
+        content: _textController.text,
+        role: MessageRole.user,
+        imageUrl: image.path,
+      );
+      // Tampilkan langsung ke UI (lokal)
+      chatProvider.messages.add(userImageMessage);
+      chatProvider.notifyListeners();
     }
-
-    chatProvider.setLoading(true); // <- ini barunya
-
+    chatProvider.setLoading(true); 
     if (sessionProvider.currentSession != null) {
       await chatProvider.sendMessage(
           text, sessionProvider.currentSession!.id, sessionProvider);
+          _scrollToBottom();
     }
+    chatProvider.clearPendingImage(); 
+    setState(() {});
 
-    chatProvider.setLoading(false); // <- ini barunya
-    _scrollToBottom();
+    chatProvider.setLoading(false);
   }
 
   void _onSuggestionSelected(String suggestion) {
@@ -217,7 +224,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Consumer<ChatProvider>(
       builder: (context, chatProvider, child) {
         if (chatProvider.messages.isNotEmpty) {
-          _scrollToBottom();
+          // _scrollToBottom();
         }
 
         return WillPopScope(
@@ -344,22 +351,12 @@ Widget _buildChatList(
   return ListView.builder(
     controller: _scrollController,
     padding: const EdgeInsets.all(16),
-    itemCount: chatProvider.messages.length +
-        (chatProvider.isLoading ? 1 : 0) +
-        (chatProvider.isTranscribing ? 1 : 0),
+itemCount: chatProvider.messages.length +
+  (chatProvider.isLoading ? 1 : 0),
+
+
     itemBuilder: (context, index) {
-      // Cek apakah ini index dummy transcribe
-      final isTranscribeIndex = index == chatProvider.messages.length;
-      if (chatProvider.isTranscribing && isTranscribeIndex){
-        return ChatMessageItem(
-          message: ChatMessage(
-            id: 'transcribe_dummy',
-            content: "Sedang memproses suara...",
-            role: MessageRole.user,
-          ),
-          isTyping: true,
-        );
-      }
+
 
       // Cek apakah ini index untuk loading assistant
       if (index == chatProvider.messages.length && chatProvider.isLoading) {
@@ -520,11 +517,41 @@ Widget _buildInputArea(ChatProvider chatProvider, SessionProvider sessionProvide
   return Container(
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(40),
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(40),
     ),
     child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (chatProvider.selectedImage != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Stack(
+                alignment: Alignment.topRight,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      chatProvider.selectedImage!,
+                      width: 60,
+                      height: 60,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.cancel, color: Colors.red, size: 20),
+                    onPressed: () {
+                      chatProvider.clearPendingImage();
+                      setState(() {});
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+
         Row(
           children: [
             Padding(
@@ -551,7 +578,9 @@ Widget _buildInputArea(ChatProvider chatProvider, SessionProvider sessionProvide
                     fontSize: 18,
                   ),
                   decoration: InputDecoration(
-                    hintText: hasImage ? "Ketik pertanyaan untuk gambar ini..." : "Tulis pertanyaan di sini...",
+                    hintText: hasImage
+                        ? "Ketik pertanyaan untuk gambar ini..."
+                        : "Tulis pertanyaan di sini...",
                     hintStyle: TextStyle(color: Colors.grey[500], fontSize: 18),
                     border: InputBorder.none,
                     filled: false,
@@ -589,28 +618,6 @@ Widget _buildInputArea(ChatProvider chatProvider, SessionProvider sessionProvide
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        if (chatProvider.selectedImage != null)
-          Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.file(
-                  chatProvider.selectedImage!,
-                  width: 100,
-                  height: 100,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.cancel, color: Colors.red),
-                onPressed: () {
-                  chatProvider.clearPendingImage();
-                  setState(() {});
-                },
-              ),
-            ],
-          ),
         const SizedBox(height: 12),
         SuggestionChips(
           onSuggestionSelected: _onSuggestionSelected,
