@@ -235,8 +235,8 @@ Widget _buildWelcomeScreen() {
           ),
           const SizedBox(height: 16),  // Changed from block-size
           Text(
-            // "Selamat datang di PeTaniku!",
-            "Welcome to PeTaniku!",
+            "Selamat datang di PeTaniku!",
+            // "Welcome to PeTaniku!",
             style: Theme.of(context).textTheme.headlineMedium,
           ),
           const SizedBox(height: 8),  // Changed from block-size

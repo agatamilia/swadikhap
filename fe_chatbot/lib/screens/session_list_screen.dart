@@ -27,7 +27,7 @@ class SessionListScreen extends StatelessWidget {
               child: CircularProgressIndicator(),
             );
           }
-          
+
           return ListView.builder(
             itemCount: sessionProvider.sessions.length,
             itemBuilder: (context, index) {
@@ -39,14 +39,16 @@ class SessionListScreen extends StatelessWidget {
       ),
     );
   }
-  
+
   Widget _buildSessionItem(BuildContext context, ChatSession session) {
-    final sessionProvider = Provider.of<SessionProvider>(context, listen: false);
+    final sessionProvider =
+        Provider.of<SessionProvider>(context, listen: false);
     final dateFormat = DateFormat('dd MMM yyyy, HH:mm', 'id_ID');
-    
+
     // Convert milliseconds timestamp to DateTime for formatting
-    final DateTime updatedAtDateTime = DateTime.fromMillisecondsSinceEpoch(session.updatedAt);
-    
+    final DateTime updatedAtDateTime =
+        DateTime.fromMillisecondsSinceEpoch(session.updatedAt);
+
     return Dismissible(
       key: Key(session.id),
       background: Container(
@@ -62,7 +64,8 @@ class SessionListScreen extends StatelessWidget {
           builder: (BuildContext context) {
             return AlertDialog(
               title: const Text('Hapus Percakapan'),
-              content: const Text('Apakah Anda yakin ingin menghapus percakapan ini?'),
+              content: const Text(
+                  'Apakah Anda yakin ingin menghapus percakapan ini?'),
               // title: const Text('Delete Conversation'),
               // content: const Text('Are you sure you want to delete this conversation?'),
               actions: [
@@ -73,7 +76,8 @@ class SessionListScreen extends StatelessWidget {
                 ),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Delete'),
+                  // child: const Text('Delete'),
+                  child: const Text('Hapus'),
                 ),
               ],
             );
@@ -101,14 +105,14 @@ class SessionListScreen extends StatelessWidget {
               child: Text('Ubah Nama'),
               // child: Text('Rename'),
             ),
-            const PopupMenuItem(
-              value: 'clear',
-              child: Text('Hapus Pesan'),
-            ),
             // const PopupMenuItem(
-            //   value: 'delete',
-            //   child: Text('Delete Conversation'),
+            //   value: 'clear',
+            //   child: Text('Hapus Pesan'),
             // ),
+            const PopupMenuItem(
+              value: 'delete',
+              child: Text('Hapus Percakapan'),
+            ),
           ],
           onSelected: (value) async {
             if (value == 'rename') {
@@ -132,12 +136,14 @@ class SessionListScreen extends StatelessWidget {
       ),
     );
   }
-  
+
   void _createNewSession(BuildContext context) {
-    final sessionProvider = Provider.of<SessionProvider>(context, listen: false);
-    final TextEditingController controller = TextEditingController(text: 'Percakapan Baru');
+    final sessionProvider =
+        Provider.of<SessionProvider>(context, listen: false);
+    final TextEditingController controller =
+        TextEditingController(text: 'Percakapan Baru');
     // final TextEditingController controller = TextEditingController(text: 'New Conversation');
-    
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -155,14 +161,15 @@ class SessionListScreen extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+              // child: const Text('Cancel'),
+              child: const Text('Batal'),
             ),
             TextButton(
               onPressed: () {
                 if (controller.text.isNotEmpty) {
                   sessionProvider.createSession(controller.text);
                   Navigator.of(context).pop();
-                  
+
                   // Navigate to the chat screen with the new session
                   Navigator.push(
                     context,
@@ -180,11 +187,13 @@ class SessionListScreen extends StatelessWidget {
       },
     );
   }
-  
+
   void _renameSession(BuildContext context, ChatSession session) {
-    final sessionProvider = Provider.of<SessionProvider>(context, listen: false);
-    final TextEditingController controller = TextEditingController(text: session.name);
-    
+    final sessionProvider =
+        Provider.of<SessionProvider>(context, listen: false);
+    final TextEditingController controller =
+        TextEditingController(text: session.name);
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -212,24 +221,26 @@ class SessionListScreen extends StatelessWidget {
                   Navigator.of(context).pop();
                 }
               },
-              // child: const Text('Simpan'),
-              child: const Text('Save'),
+              child: const Text('Simpan'),
+              // child: const Text('Save'),
             ),
           ],
         );
       },
     );
   }
-  
+
   void _clearSessionMessages(BuildContext context, ChatSession session) {
-    final sessionProvider = Provider.of<SessionProvider>(context, listen: false);
-    
+    final sessionProvider =
+        Provider.of<SessionProvider>(context, listen: false);
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Hapus Pesan'),
-          content: const Text('Apakah Anda yakin ingin menghapus semua pesan dalam percakapan ini?'),
+          content: const Text(
+              'Apakah Anda yakin ingin menghapus semua pesan dalam percakapan ini?'),
 
           // title: const Text('Delete Messages'),
           // content: const Text('Are you sure you want to delete all messages in this conversation?'),
@@ -255,35 +266,39 @@ class SessionListScreen extends StatelessWidget {
       },
     );
   }
-  
+
   void _deleteSession(BuildContext context, ChatSession session) {
-    final sessionProvider = Provider.of<SessionProvider>(context, listen: false);
-    
+    final sessionProvider =
+        Provider.of<SessionProvider>(context, listen: false);
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Hapus Percakapan'),
-          content: const Text('Apakah Anda yakin ingin menghapus percakapan ini?'),
+          content:
+              const Text('Apakah Anda yakin ingin menghapus percakapan ini?'),
           // title: const Text('Delete Conversation'),
           // content: const Text('Are you sure you want to delete this conversation?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              // child: const Text('Batal'),
-              child: const Text('Cancel'),
+              child: const Text('Batal'),
+              // child: const Text('Cancel'),
             ),
             TextButton(
               onPressed: () {
                 sessionProvider.deleteSession(session);
                 Navigator.of(context).pop();
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Percakapan "${session.name}" telah dihapus')),
+                  SnackBar(
+                      content:
+                          Text('Percakapan "${session.name}" telah dihapus')),
                   // SnackBar(content: Text('Conversation "${session.name}" has been deleted')),
                 );
               },
-              // child: const Text('Hapus'),
-              child: const Text('Delete'),
+              child: const Text('Hapus'),
+              // child: const Text('Delete'),
             ),
           ],
         );
@@ -291,4 +306,3 @@ class SessionListScreen extends StatelessWidget {
     );
   }
 }
-
