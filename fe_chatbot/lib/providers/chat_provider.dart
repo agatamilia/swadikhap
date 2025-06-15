@@ -224,7 +224,14 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await _apiService.sendMessage(text, sessionId);
+      final last5BotMessages = _messages
+        .where((m) => m.role == MessageRole.assistant)
+        .toList()
+        .reversed
+        .take(5)
+        .map((m) => m.content)
+        .toList();
+      final response = await _apiService.sendMessage(text, sessionId, _deviceId, previousBotReplies: last5BotMessages,);
       await _addBotMessage(response['response'], sessionId);
     } catch (e) {
       print('Error sending message: $e');
@@ -293,42 +300,54 @@ class ChatProvider with ChangeNotifier {
         _isTranscribing = true;
         notifyListeners();
 
-        // Buat sesi baru jika masih local
-        if (sessionId.startsWith('local_')) {
-          final newSession =
-              await _apiService.createSession("Percakapan Baru", deviceId);
-          sessionId = newSession.id;
-          _currentSessionId = sessionId;
-        }
-
-        // Simpan file audio
-        final audioFile = File(recordingPath);
-        final appDir = await getApplicationDocumentsDirectory();
-        final fileName = path.basename(recordingPath);
-        final savedPath = path.join(appDir.path, fileName);
-        final savedAudio = await audioFile.copy(savedPath);
-
-        // Transkripsi suara ke teks
-        final response =
-            await _apiService.transcribeAudio(savedAudio, sessionId, deviceId);
-        final transcription = response['transcription'];
-
-        // Tampilkan bubble dari user (petani) dengan isi transkrip
-        final userMessage = ChatMessage(
-          content: transcription,
+        // Tambahkan bubble transkripsi sementara
+        final tempId = DateTime.now().millisecondsSinceEpoch.toString();
+        final tempMessage = ChatMessage(
+          id: tempId,
+          content: "Sedang memproses suara...",
           role: MessageRole.user,
         );
-        _messages.add(userMessage);
+        _messages.add(tempMessage);
         notifyListeners();
-        await _apiService.saveMessage(userMessage, sessionId, deviceId);
 
-        // Tampilkan animasi "menunggu jawaban"
+        // Kirim ke Whisper
+        final response =
+            await _apiService.transcribeAudio(File(recordingPath), sessionId, deviceId);
+        final transcription = response['transcription'];
+
+        // Ganti isi bubble sementara dengan hasil transkripsi
+        final index = _messages.indexWhere((m) => m.id == tempId);
+        if (index != -1) {
+          _messages[index] = ChatMessage(
+            id: tempId,
+            content: transcription,
+            role: MessageRole.user,
+          );
+          notifyListeners();
+
+          // Simpan ke server
+          await _apiService.saveMessage(_messages[index], sessionId, deviceId);
+        }
+
+        // Tampilkan animasi loading
         _isLoading = true;
         notifyListeners();
 
         // Kirim ke bot
-        final assistantResponse =
-            await _apiService.sendMessage(transcription, sessionId);
+        final last5BotMessages = _messages
+            .where((m) => m.role == MessageRole.assistant)
+            .toList()
+            .reversed
+            .take(5)
+            .map((m) => m.content)
+            .toList();
+
+        final assistantResponse = await _apiService.sendMessage(
+          transcription,
+          sessionId,
+          deviceId,
+          previousBotReplies: last5BotMessages,
+        );
         final assistantMessage = ChatMessage(
           content: assistantResponse['response'],
           role: MessageRole.assistant,

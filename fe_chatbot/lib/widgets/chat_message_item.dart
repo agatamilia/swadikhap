@@ -92,8 +92,9 @@ Widget _buildMessageContent(BuildContext context) {
               ? Image.network(
                   message.imageUrl!,
                   fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: 200,
+                  width: MediaQuery.of(context).size.width * 0.4,
+                  height: MediaQuery.of(context).size.width * 0.4,
+
                   errorBuilder: (context, error, stackTrace) {
                     return const Text('Gagal memuat gambar dari server.');
                   },

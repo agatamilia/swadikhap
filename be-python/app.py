@@ -70,6 +70,7 @@ class Session(db.Model):
     id = db.Column(db.String(36), primary_key=True)
     device_id = db.Column(db.String(255), nullable=False, index=True)
     name = db.Column(db.String(100), nullable=False)
+    topic = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.BigInteger, nullable=False)
     updated_at = db.Column(db.BigInteger, nullable=False)
     
@@ -377,7 +378,7 @@ def transcribe_audio():
             filepath,
             language="id",
             task="transcribe",
-            initial_prompt="Bahasa Indonesia, Jawa, dan Sunda digunakan di percakapan ini."
+            initial_prompt="Bahasa Indonesia digunakan di percakapan ini."
         )
 
         transcription = result.get("text", "").strip()
@@ -562,55 +563,60 @@ def analyze_image():
 def chat():
     try:
         data = request.json
-        message = data.get('message', '')
+        message = data.get('message', '').strip()
         session_id = data.get('session_id', '')
-        
+        device_id = data.get('device_id', '')
+
         if not message:
             return jsonify({"error": "Message is required"}), 400
+        if not session_id or not device_id:
+            return jsonify({"error": "Session ID and Device ID are required"}), 400
 
-        # Panggil respons dari DeepSeek melalui fungsi terpisah
-        assistant_raw_response = get_deepseek_response(message)
-        
-        # Format ulang respons
+        session = db.session.get(Session, session_id)
+        if not session:
+            return jsonify({"error": "Session not found"}), 404
+
+        # Simpan topik jika belum ada
+        if not session.topic:
+            extracted_topic = extract_topic_from_question(message)
+            session.topic = extracted_topic
+            db.session.commit()
+
+        # Panggil DeepSeek dengan riwayat + topik
+        assistant_raw_response = get_deepseek_response(
+            message,
+            session_id=session_id,
+            device_id=device_id
+        )
+
         formatted_message = assistant_raw_response.replace('###', '').replace('*', '').strip()
-        clean_tts_message = formatted_message
+        current_time = int(datetime.now().timestamp() * 1000)
 
-        # Simpan ke database jika session_id tersedia
-        if session_id:
-            try:
-                session = db.session.get(Session, session_id)
-                if not session:
-                    return jsonify({"error": "Session not found"}), 404
-                
-                current_time = int(datetime.now().timestamp() * 1000)
+        # Simpan pesan user dan assistant
+        user_message = Message(
+            id=str(uuid.uuid4()),
+            session_id=session_id,
+            device_id=device_id,
+            content=message,
+            role='user',
+            timestamp=current_time
+        )
+        assistant_message = Message(
+            id=str(uuid.uuid4()),
+            session_id=session_id,
+            device_id=device_id,
+            content=formatted_message,
+            role='assistant',
+            timestamp=current_time + 1
+        )
 
-                # Buat entri pesan pengguna dan asisten
-                user_message = Message(
-                    id=str(uuid.uuid4()),
-                    session_id=session_id,
-                    content=message,
-                    role='user',
-                    timestamp=current_time
-                )
-                assistant_message = Message(
-                    id=str(uuid.uuid4()),
-                    session_id=session_id,
-                    content=formatted_message,
-                    role='assistant',
-                    timestamp=current_time + 1
-                )
-
-                session.updated_at = current_time
-                db.session.add_all([user_message, assistant_message])
-                db.session.commit()
-
-            except Exception as e:
-                logger.error(f"Error saving messages to database: {e}")
-                db.session.rollback()
+        session.updated_at = current_time
+        db.session.add_all([user_message, assistant_message])
+        db.session.commit()
 
         return jsonify({
             "response": formatted_message,
-            "clean_tts_message": clean_tts_message,
+            "clean_tts_message": formatted_message,
             "is_farming_related": True
         })
 
@@ -729,20 +735,31 @@ def correct_user_question(raw_question):
         return raw_question
 
 def get_deepseek_response(prompt, session_id=None, device_id=None):
+    topic_prompt = ""
+    if session_id and device_id:
+        session = db.session.get(Session, session_id)
+        if session and session.topic:
+            topic_prompt = f"Saat ini topik yang sedang dibahas adalah '{session.topic}'."
+
     try:
         corrected_prompt = correct_user_question(prompt)
-
-        # Siapkan riwayat (jika session tersedia)
         messages_history = []
+
+        # Ambil riwayat percakapan jika ada
+        history = []
         if session_id and device_id:
             history = Message.query.filter_by(session_id=session_id, device_id=device_id) \
                                    .order_by(Message.timestamp.asc()) \
-                                   .limit(10) \
-                                   .all()
+                                   .limit(5) \
+                                   .all()[::-1]
             for msg in history:
                 messages_history.append({"role": msg.role, "content": msg.content})
 
-        # Tambahkan pertanyaan user terbaru
+        # Cegah kasus "ya", "lanjut", dll tanpa konteks
+        if corrected_prompt.lower().strip() in ["ya", "iya", "lanjut"] and not history:
+            return "Belum ada konteks percakapan sebelumnya untuk dilanjutkan. Silakan ajukan pertanyaan yang lebih spesifik."
+
+        # Tambahkan prompt terbaru pengguna
         messages_history.append({"role": "user", "content": corrected_prompt})
 
         headers = {
@@ -753,8 +770,21 @@ def get_deepseek_response(prompt, session_id=None, device_id=None):
         payload = {
             "model": "deepseek-chat",
             "messages": [
-                {"role": "system", "content": """Anda adalah Asisten Pertanian PeTaniku..."""}
-            ] + messages_history,
+                {"role": "system", "content": """Anda adalah Asisten Pertanian PeTaniku yang ahli di bidang:
+- Pertanian dan perkebunan
+- Cuaca dan iklim untuk pertanian
+- Pengelolaan tanaman dan tanah
+- Teknologi pertanian
+
+Bantu pengguna dengan:
+1. Berikan jawaban mendetail untuk pertanyaan pertanian
+2. Jika pertanyaan di luar topik, jawab dengan sopan:
+   \"Maaf, saya hanya dapat membantu tentang pertanian. Ada yang bisa saya bantu terkait tanaman, cuaca pertanian, atau hal terkait?\"
+
+Gaya respons:
+- Gunakan bahasa sederhana dan praktis
+- Format jelas dengan paragraf terpisah
+- Hindari jargon teknis berlebihan"""}] + messages_history,
             "temperature": 0.7,
             "max_tokens": 1000
         }
@@ -775,6 +805,15 @@ def get_deepseek_response(prompt, session_id=None, device_id=None):
     except Exception as e:
         logger.error(f"Error getting DeepSeek response: {e}")
         return "Maaf, terjadi kesalahan dalam memproses permintaan Anda."
+def extract_topic_from_question(question):
+    try:
+        response = get_deepseek_response(
+            f"Apa topik utama dari pertanyaan ini? '{question}'. Beri jawaban singkat, maksimal 3 kata."
+        )
+        return response.strip()
+    except Exception as e:
+        logger.error(f"Gagal ekstrak topik: {e}")
+        return None
 
 if __name__ == '__main__':
     app.run()

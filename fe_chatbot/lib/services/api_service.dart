@@ -258,7 +258,7 @@ class ApiService {
   }
 
   // Chat service
-  Future<Map<String, dynamic>> sendMessage(String message, String sessionId) async {
+  Future<Map<String, dynamic>> sendMessage(String message, String sessionId, String deviceId, {List<String>? previousBotReplies}) async {
     try {
       final response = await _requestWithRetry(
         RequestOptions(
@@ -267,6 +267,8 @@ class ApiService {
           data: {
             'message': message,
             'session_id': sessionId,
+            'device_id': deviceId,
+          if (previousBotReplies != null) 'history': previousBotReplies,
           },
         ),
       );

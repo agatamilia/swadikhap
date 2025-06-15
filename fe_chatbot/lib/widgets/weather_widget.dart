@@ -17,6 +17,8 @@ class _WeatherWidgetState extends State<WeatherWidget> {
   WeatherData? _weatherData;
   String _locationName = 'Mencari lokasi saat ini...';
   String _errorMessage = '';
+  bool _expanded = false;
+
 
   @override
   void initState() {
@@ -77,52 +79,103 @@ class _WeatherWidgetState extends State<WeatherWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.all(8),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.location_on, size: 24, color: Colors.green),
-                        const SizedBox(width: 8),
-                        Text(
-                          _locationName,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      DateFormat('EEEE, d MMMM yyyy', 'id_ID').format(DateTime.now()),
-                      style: TextStyle(
-                        color: Colors.grey[600], 
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-                _buildWeatherStatusIndicator(),
-              ],
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _expanded = !_expanded;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: _expanded ? 16 : 8,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.green[50],
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 4,
+              offset: const Offset(0, 2),
             ),
-            const SizedBox(height: 16),
-            _buildWeatherContent(),
           ],
         ),
+        child: _expanded ? _buildExpandedContent() : _buildCompactContent(),
       ),
     );
   }
+
+  Widget _buildCompactContent() {
+  return Row(
+    children: [
+      _buildWeatherStatusIndicator(),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _locationName,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+            Text(
+              '${_weatherData?.temperature.round() ?? '--'}°C • ${_weatherData?.description ?? ''}',
+              style: TextStyle(fontSize: 12, color: Colors.grey[800]),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+
+  Widget _buildExpandedContent() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          _buildWeatherStatusIndicator(),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _locationName,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              Text(
+                DateFormat('EEEE, d MMMM yyyy', 'id_ID').format(DateTime.now()),
+                style: TextStyle(color: Colors.grey[600], fontSize: 14),
+              ),
+            ],
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      Row(
+        children: [
+          Text(
+            '${_weatherData?.temperature.round() ?? '--'}°C',
+            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              '${_weatherData?.description ?? ''} - ${_weatherData?.advice ?? ''}',
+              style: TextStyle(color: Colors.green[700], fontSize: 16),
+            ),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
 
   Widget _buildWeatherStatusIndicator() {
     switch (_state) {

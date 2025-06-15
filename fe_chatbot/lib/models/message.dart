@@ -1,18 +1,17 @@
-enum MessageRole {
-  user,
-  assistant,
-}
+import 'package:uuid/uuid.dart';
+
+enum MessageRole { user, assistant, system }
 
 class ChatMessage {
   final String id;
   final String content;
-  final String? cleanContent;
+  final String? cleanContent; // Clean text without formatting for TTS
   final MessageRole role;
   final int timestamp;
   final String? imageUrl;
   final String? audioUrl;
   final bool isAudio;
-
+  
   ChatMessage({
     String? id,
     required this.content,
@@ -23,58 +22,28 @@ class ChatMessage {
     this.audioUrl,
     this.isAudio = false,
   }) : 
-    this.id = id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-    this.timestamp = timestamp ?? DateTime.now().millisecondsSinceEpoch;
-
-  // Factory constructor to create ChatMessage from a Map (e.g., from API response)
+    id = id ?? const Uuid().v4(),
+    timestamp = timestamp ?? DateTime.now().millisecondsSinceEpoch;
+  
   factory ChatMessage.fromMap(Map<String, dynamic> map) {
     return ChatMessage(
-      id: map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      content: map['content'] ?? '',
+      id: map['id'],
+      content: map['content'],
       cleanContent: map['clean_content'],
-      role: map['role'] == 'user' ? MessageRole.user : MessageRole.assistant,
-      timestamp: map['timestamp'] ?? DateTime.now().millisecondsSinceEpoch,
+      role: _parseRole(map['role']),
+      timestamp: map['timestamp'],
       imageUrl: map['image_path'],
       audioUrl: map['audio_path'],
-      isAudio: map['is_audio'] ?? false,
+      isAudio: map['audio_path'] != null,
     );
   }
-
-  // Factory constructor to create ChatMessage from JSON (e.g., from local storage or API)
-  factory ChatMessage.fromJson(Map<String, dynamic> json) {
-    return ChatMessage(
-      id: json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      content: json['content'] ?? '',
-      cleanContent: json['cleanContent'],
-      role: json['role'] == 'user' ? MessageRole.user : MessageRole.assistant,
-      timestamp: json['timestamp'] ?? DateTime.now().millisecondsSinceEpoch,
-      imageUrl: json['imageUrl'],
-      audioUrl: json['audioUrl'],
-      isAudio: json['isAudio'] ?? false,
-    );
-  }
-
-  // Method to convert ChatMessage to a Map for API requests
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'content': content,
-      'clean_content': cleanContent,
-      'role': role == MessageRole.user ? 'user' : 'assistant',
-      'timestamp': timestamp,
-      'image_path': imageUrl,
-      'audio_path': audioUrl,
-      'is_audio': isAudio,
-    };
-  }
-
-  // Method to convert ChatMessage to JSON for local storage or JSON response handling
+  
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'content': content,
       'cleanContent': cleanContent,
-      'role': role == MessageRole.user ? 'user' : 'assistant',
+      'role': _roleToString(role),
       'timestamp': timestamp,
       'imageUrl': imageUrl,
       'audioUrl': audioUrl,
@@ -82,18 +51,43 @@ class ChatMessage {
     };
   }
 
-  // Method to create API request map with sessionId included
-  Map<String, dynamic> toApiMap(String sessionId) {
-    return {
-      'content': content,
-      'role': role == MessageRole.user ? 'user' : 'assistant',
-      'image_path': imageUrl,
-      'audio_path': audioUrl,
-      'device_id': '', // This will be filled by the API service
-    };
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    return ChatMessage(
+      id: json['id'],
+      content: json['content'],
+      cleanContent: json['cleanContent'],
+      role: _parseRole(json['role']),
+      timestamp: json['timestamp'],
+      imageUrl: json['imageUrl'],
+      audioUrl: json['audioUrl'],
+      isAudio: json['isAudio'] ?? false,
+    );
   }
-
-  // Helper method to create a copy of a ChatMessage with optional updates to fields
+  
+  static MessageRole _parseRole(String role) {
+    switch (role.toLowerCase()) {
+      case 'user':
+        return MessageRole.user;
+      case 'assistant':
+        return MessageRole.assistant;
+      case 'system':
+        return MessageRole.system;
+      default:
+        return MessageRole.user;
+    }
+  }
+  
+  static String _roleToString(MessageRole role) {
+    switch (role) {
+      case MessageRole.user:
+        return 'user';
+      case MessageRole.assistant:
+        return 'assistant';
+      case MessageRole.system:
+        return 'system';
+    }
+  }
+  
   ChatMessage copyWith({
     String? id,
     String? content,
@@ -116,3 +110,4 @@ class ChatMessage {
     );
   }
 }
+

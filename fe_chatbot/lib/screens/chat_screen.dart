@@ -238,6 +238,11 @@ class _ChatScreenState extends State<ChatScreen> {
           child: Scaffold(
             backgroundColor: const Color.fromARGB(255, 247, 248, 242),
             appBar: AppBar(
+              leading: IconButton(
+              icon: const Icon(Icons.list, size: 28),
+              onPressed: _showSessionList,
+              tooltip: 'Riwayat Chat',
+            ),
               title: Text(
                 sessionProvider.currentSession?.name ?? 'PeTaniku',
                 style: Theme.of(context)
@@ -246,30 +251,12 @@ class _ChatScreenState extends State<ChatScreen> {
                     ?.copyWith(fontSize: 22, color: Colors.white),
               ),
               actions: [
-                IconButton(
-                  icon: const Icon(Icons.history, size: 28),
-                  onPressed: _showSessionList,
-                  tooltip: 'Riwayat Chat',
-                ),
+
                 _buildVoiceOutputToggle(chatProvider),
             ],
           ),
           body: Stack(
             children: [
-              if (chatProvider.isLoading)
-                Positioned(
-                  bottom: 100,
-                  left: 0,
-                  right: 0,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      CircularProgressIndicator(),
-                      SizedBox(width: 12),
-                      Text("Sedang memproses...", style: TextStyle(fontSize: 18)),
-                    ],
-                  ),
-                ),
               Column(
                 children: [
                   const WeatherWidget(),
@@ -434,38 +421,7 @@ itemCount: chatProvider.messages.length +
         );
       }
 
-      return Dismissible(
-        key: Key(message.id),
-        direction: DismissDirection.endToStart,
-        background: Container(
-          color: Colors.red,
-          alignment: Alignment.centerRight,
-          padding: const EdgeInsets.only(right: 16),
-          child: const Icon(Icons.delete, color: Colors.white, size: 28),
-        ),
-        confirmDismiss: (direction) async {
-          return await showDialog(
-            context: context,
-            builder: (BuildContext context) {
-              return AlertDialog(
-                title: const Text('Hapus Pesan', style: TextStyle(fontSize: 22)),
-                content: const Text('Apakah Anda yakin ingin menghapus pesan ini?', style: TextStyle(fontSize: 18)),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('Batal', style: TextStyle(fontSize: 18)),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('Hapus', style: TextStyle(fontSize: 18)),
-                  ),
-                ],
-              );
-            },
-          );
-        },
-        child: messageWidget,
-      );
+      return messageWidget;
     },
   );
 }
@@ -618,11 +574,11 @@ Widget _buildInputArea(ChatProvider chatProvider, SessionProvider sessionProvide
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        SuggestionChips(
-          onSuggestionSelected: _onSuggestionSelected,
-          chipTextStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 18),
-        ),
+        // const SizedBox(height: 12),
+        // SuggestionChips(
+        //   onSuggestionSelected: _onSuggestionSelected,
+        //   chipTextStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 18),
+        // ),
       ],
     ),
   );
