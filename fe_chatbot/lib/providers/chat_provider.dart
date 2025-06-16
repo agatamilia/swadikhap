@@ -173,7 +173,11 @@ class ChatProvider with ChangeNotifier {
   }
 
   Future<void> sendMessage(
-      String text, String sessionId, SessionProvider sessionProvider) async {
+    String text,
+    String sessionId,
+    SessionProvider sessionProvider, {
+    VoidCallback? scrollToBottomCallback,
+  }) async {
     if (text.isEmpty && !hasImagePending) return;
 
     if (_messages.isEmpty) {
@@ -183,59 +187,59 @@ class ChatProvider with ChangeNotifier {
       try {
         await sessionProvider.renameSession(
             sessionProvider.currentSession!, sessionName);
-      } catch (e) {
-        print('Failed to update session name: $e');
-      }
+      } catch (_) {}
     }
 
     if (_pendingImage != null) {
-      if (text.isNotEmpty) {
-        // Simpan pertanyaan user + gambar di chat bubble
-        final userImageMessage = ChatMessage(
-          content: text,
-          role: MessageRole.user,
-          imageUrl: _pendingImage!.path,
-        );
-        _messages.add(userImageMessage);
-        notifyListeners();
-        await _apiService.saveMessage(userImageMessage, sessionId, _deviceId);
-      }
+      //Jika ada gambar
+      final userImageMessage = ChatMessage(
+        content: text,
+        role: MessageRole.user,
+        imageUrl: _pendingImage!.path,
+      );
+      _messages.add(userImageMessage);
+      notifyListeners();
+      scrollToBottomCallback?.call();
 
-      await _processImage(sessionId);
+      await _apiService.saveMessage(userImageMessage, sessionId, _deviceId);
+      await _processImage(sessionId); // akan lanjut sendiri
       return;
     }
 
+    //Jika hanya teks
     final userMessage = ChatMessage(
       content: text,
       role: MessageRole.user,
     );
     _messages.add(userMessage);
     notifyListeners();
+    scrollToBottomCallback?.call();
 
     await StorageService.saveMessages(sessionId, _messages, _deviceId);
-
-    try {
-      await _apiService.saveMessage(userMessage, sessionId, _deviceId);
-    } catch (e) {
-      print('Failed to save message to API: $e');
-    }
+    await _apiService.saveMessage(userMessage, sessionId, _deviceId);
 
     _isLoading = true;
     notifyListeners();
 
     try {
       final last5BotMessages = _messages
-        .where((m) => m.role == MessageRole.assistant)
-        .toList()
-        .reversed
-        .take(5)
-        .map((m) => m.content)
-        .toList();
-      final response = await _apiService.sendMessage(text, sessionId, _deviceId, previousBotReplies: last5BotMessages,);
+          .where((m) => m.role == MessageRole.assistant)
+          .toList()
+          .reversed
+          .take(5)
+          .map((m) => m.content)
+          .toList();
+
+      final response = await _apiService.sendMessage(
+        text,
+        sessionId,
+        _deviceId,
+        previousBotReplies: last5BotMessages,
+      );
+
       await _addBotMessage(response['response'], sessionId);
     } catch (e) {
-      print('Error sending message: $e');
-      await _addBotMessage(_getErrorMessage(e), sessionId);
+      await _addBotMessage("Terjadi kesalahan. Silakan coba lagi.", sessionId);
     }
   }
 

@@ -90,35 +90,27 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _handleSubmitted(BuildContext context, String text) async {
-    final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-    final sessionProvider =
-        Provider.of<SessionProvider>(context, listen: false);
+  final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+  final sessionProvider = Provider.of<SessionProvider>(context, listen: false);
 
-    if (text.isEmpty && !chatProvider.hasImagePending) return;
+  if (text.isEmpty && !chatProvider.hasImagePending) return;
 
-    _textController.clear();
-    final image = chatProvider.selectedImage;
-    if (image != null) {
-      final userImageMessage = ChatMessage(
-        content: _textController.text,
-        role: MessageRole.user,
-        imageUrl: image.path,
-      );
-      // Tampilkan langsung ke UI (lokal)
-      chatProvider.messages.add(userImageMessage);
-      chatProvider.notifyListeners();
-    }
-    chatProvider.setLoading(true); 
-    if (sessionProvider.currentSession != null) {
-      await chatProvider.sendMessage(
-          text, sessionProvider.currentSession!.id, sessionProvider);
-          _scrollToBottom();
-    }
-    chatProvider.clearPendingImage(); 
-    setState(() {});
+  _textController.clear();
+  chatProvider.setLoading(true);
 
-    chatProvider.setLoading(false);
+  if (sessionProvider.currentSession != null) {
+    await chatProvider.sendMessage(
+      text,
+      sessionProvider.currentSession!.id,
+      sessionProvider,
+      scrollToBottomCallback: _scrollToBottom, // scroll hanya setelah user message
+    );
   }
+
+  chatProvider.clearPendingImage();
+  setState(() {});
+  chatProvider.setLoading(false);
+}
 
   void _onSuggestionSelected(String suggestion) {
     _textController.text = suggestion;

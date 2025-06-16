@@ -99,7 +99,7 @@ except Exception as e:
     WHISPER_MODEL = None
 
 with app.app_context():
-    db.drop_all()  # WARNING: Deletes all data!
+    # db.drop_all()  # WARNING: Deletes all data!
     db.create_all()
 
 def get_temp_upload_folder(device_id, file_type):
@@ -777,7 +777,7 @@ def get_deepseek_response(prompt, session_id=None, device_id=None):
 - Teknologi pertanian
 
 Bantu pengguna dengan:
-1. Berikan jawaban mendetail untuk pertanyaan pertanian
+1. Berikan jawaban untuk pertanyaan pertanian
 2. Jika pertanyaan di luar topik, jawab dengan sopan:
    \"Maaf, saya hanya dapat membantu tentang pertanian. Ada yang bisa saya bantu terkait tanaman, cuaca pertanian, atau hal terkait?\"
 
@@ -786,7 +786,7 @@ Gaya respons:
 - Format jelas dengan paragraf terpisah
 - Hindari jargon teknis berlebihan"""}] + messages_history,
             "temperature": 0.7,
-            "max_tokens": 1000
+            "max_tokens": 450
         }
 
         response = requests.post(
