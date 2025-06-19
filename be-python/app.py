@@ -750,7 +750,7 @@ def get_deepseek_response(prompt, session_id=None, device_id=None):
         if session_id and device_id:
             history = Message.query.filter_by(session_id=session_id, device_id=device_id) \
                                    .order_by(Message.timestamp.asc()) \
-                                   .limit(5) \
+                                   .limit(3) \
                                    .all()[::-1]
             for msg in history:
                 messages_history.append({"role": msg.role, "content": msg.content})
@@ -777,7 +777,7 @@ def get_deepseek_response(prompt, session_id=None, device_id=None):
 - Teknologi pertanian
 
 Bantu pengguna dengan:
-1. Berikan jawaban untuk pertanyaan pertanian
+1. Berikan jawaban singkat dan jelas untuk pertanyaan pertanian
 2. Jika pertanyaan di luar topik, jawab dengan sopan:
    \"Maaf, saya hanya dapat membantu tentang pertanian. Ada yang bisa saya bantu terkait tanaman, cuaca pertanian, atau hal terkait?\"
 
@@ -785,8 +785,8 @@ Gaya respons:
 - Gunakan bahasa sederhana dan praktis
 - Format jelas dengan paragraf terpisah
 - Hindari jargon teknis berlebihan"""}] + messages_history,
-            "temperature": 0.7,
-            "max_tokens": 450
+            "temperature": 0.5,
+            "max_tokens": 1000
         }
 
         response = requests.post(
@@ -805,6 +805,7 @@ Gaya respons:
     except Exception as e:
         logger.error(f"Error getting DeepSeek response: {e}")
         return "Maaf, terjadi kesalahan dalam memproses permintaan Anda."
+    
 def extract_topic_from_question(question):
     try:
         response = get_deepseek_response(
