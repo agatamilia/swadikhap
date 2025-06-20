@@ -404,7 +404,11 @@ def transcribe_audio():
         db.session.commit()
 
         # Jawaban dari DeepSeek
-        response_text = get_deepseek_response(transcription)
+        response_text = get_deepseek_response(
+            transcription,
+            session_id=session_id,
+            device_id=device_id
+        )
         assistant_message = Message(
             id=str(uuid.uuid4()),
             session_id=session_id,
@@ -476,8 +480,13 @@ def validate_audio_file(filepath):
 
 @app.route("/api/analyze/image", methods=["POST"])
 def analyze_image():
+    from datetime import datetime
+    import uuid
+    import tempfile
+
     device_id = request.form.get("device_id")
-    session_id = request.form.get("session_id")  # masih diterima tapi tidak wajib digunakan
+    session_id = request.form.get("session_id")
+    note = request.form.get("note", "").strip()
 
     if not device_id:
         return jsonify({"error": "Device ID is required"}), 400
@@ -485,6 +494,7 @@ def analyze_image():
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
 
+    # Simpan file gambar
     file = request.files["file"]
     filename = secure_filename(file.filename)
     folder = os.path.join(tempfile.gettempdir(), device_id, "images")
@@ -498,10 +508,11 @@ def analyze_image():
     logger.info(f"📂 File ada?: {'Ya' if os.path.exists(filepath) else 'Tidak'}")
 
     try:
+        # Jalankan prediksi
         result = model.predict(filepath).json()
         logger.info(f"📊 Hasil prediksi mentah dari Roboflow: {result}")
-
         predictions = result.get("predictions", [])
+
         if not predictions:
             explanation = "Tidak terdeteksi penyakit pada gambar tersebut. Pastikan gambar jelas dan fokus pada bagian daun atau tanaman yang bermasalah."
             return jsonify({
@@ -511,7 +522,7 @@ def analyze_image():
                 "image_url": f"/uploads/temp/{device_id}/images/{os.path.basename(filepath)}"
             })
 
-        # Filter hanya prediksi yang memiliki confidence dan class
+        # Filter prediksi yang valid
         filtered_preds = [p for p in predictions if "confidence" in p and "class" in p]
         if not filtered_preds:
             explanation = "Hasil prediksi tidak lengkap atau tidak valid."
@@ -522,31 +533,53 @@ def analyze_image():
                 "image_url": f"/uploads/temp/{device_id}/images/{os.path.basename(filepath)}"
             })
 
+        # Pilih prediksi dengan confidence tertinggi
         top_pred = max(filtered_preds, key=lambda p: p.get("confidence", 0))
         label = top_pred.get("class", "Tidak diketahui")
         confidence = round(top_pred.get("confidence", 0) * 100, 2)
 
-        prompt = f"Apa itu penyakit '{label}' pada tanaman dan bagaimana cara mengatasinya?"
+        # Buat prompt untuk LLM
+        if note:
+            prompt = f"Apa itu penyakit '{label}' pada tanaman dan bagaimana cara mengatasinya? Berikut kondisi tambahan dari pengguna: {note}"
+        else:
+            prompt = f"Apa itu penyakit '{label}' pada tanaman dan bagaimana cara mengatasinya?"
+
         explanation = get_deepseek_response(prompt)
 
-        # Simpan ke database hanya jika session valid
-        try:
-            session = db.session.get(Session, session_id) if session_id else None
-            if session:
-                from datetime import datetime
-                import uuid
+        now = int(datetime.now().timestamp() * 1000)
+        session = db.session.get(Session, session_id) if session_id else None
+
+        if session:
+            # Simpan hanya note + gambar sebagai pesan user
+            db.session.add(Message(
+                id=str(uuid.uuid4()),
+                session_id=session_id,
+                device_id=device_id,
+                content=note if note else "",
+                role="user",
+                timestamp=now,
+                image_path=f"/uploads/temp/{device_id}/images/{os.path.basename(filepath)}"
+            ))
+
+            # Simpan respons LLM jika belum duplikat
+            existing = db.session.query(Message).filter_by(
+                session_id=session_id,
+                content=explanation,
+                role="assistant"
+            ).first()
+
+            if not existing:
                 db.session.add(Message(
                     id=str(uuid.uuid4()),
                     session_id=session_id,
                     device_id=device_id,
-                    content=prompt,
-                    role="user",
-                    timestamp=int(datetime.now().timestamp() * 1000),
-                    image_path=f"/uploads/temp/{device_id}/images/{os.path.basename(filepath)}"
+                    content=explanation,
+                    role="assistant",
+                    timestamp=now + 1
                 ))
-                db.session.commit()
-        except Exception as db_err:
-            logger.warning(f"Tidak dapat menyimpan pesan ke sesi: {db_err}")
+
+            session.updated_at = now + 1
+            db.session.commit()
 
         return jsonify({
             "detected": label,
@@ -735,65 +768,58 @@ def correct_user_question(raw_question):
         return raw_question
 
 def get_deepseek_response(prompt, session_id=None, device_id=None):
-    topic_prompt = ""
-    if session_id and device_id:
-        session = db.session.get(Session, session_id)
-        if session and session.topic:
-            topic_prompt = f"Saat ini topik yang sedang dibahas adalah '{session.topic}'."
-
     try:
-        corrected_prompt = correct_user_question(prompt)
-        messages_history = []
+        session = db.session.get(Session, session_id) if session_id else None
+        topic = session.topic.lower() if session and session.topic else None
+        topic_instruction = f"\n\nTopik yang sedang dibahas adalah **{topic}**.\n" if topic else ""
 
-        # Ambil riwayat percakapan jika ada
+        # Koreksi pertanyaan
+        corrected_prompt = correct_user_question(prompt)
+
+        # Ambil 2 pesan user terakhir yang sesuai topik
         history = []
         if session_id and device_id:
-            history = Message.query.filter_by(session_id=session_id, device_id=device_id) \
-                                   .order_by(Message.timestamp.asc()) \
-                                   .limit(3) \
-                                   .all()[::-1]
-            for msg in history:
-                messages_history.append({"role": msg.role, "content": msg.content})
+            messages = Message.query.filter_by(session_id=session_id, device_id=device_id)\
+                                    .order_by(Message.timestamp.desc())\
+                                    .all()
+            for msg in messages:
+                if msg.role == 'user' and (not topic or topic in msg.content.lower()):
+                    history.append({"role": "user", "content": msg.content})
+                    if len(history) >= 2:
+                        break
+        history = list(reversed(history))  # Urutkan lama ke baru
+        history.append({"role": "user", "content": corrected_prompt})
 
-        # Cegah kasus "ya", "lanjut", dll tanpa konteks
-        if corrected_prompt.lower().strip() in ["ya", "iya", "lanjut"] and not history:
-            return "Belum ada konteks percakapan sebelumnya untuk dilanjutkan. Silakan ajukan pertanyaan yang lebih spesifik."
+        # Prompt lama + sisipan topik
+        system_prompt = f"""Anda adalah Asisten Pertanian PeTaniku yang ahli di bidang:
+- Pertanian dan perkebunan
+- Cuaca dan iklim untuk pertanian
+- Pengelolaan tanaman dan tanah
+- Teknologi pertanian
+{topic_instruction}
+Bantu pengguna dengan:
+1. Berikan jawaban singkat dan jelas untuk pertanyaan pertanian
+2. Jika pertanyaan di luar topik, jawab dengan sopan:
+   "Maaf, saya hanya dapat membantu tentang pertanian. Ada yang bisa saya bantu terkait tanaman, cuaca pertanian, atau hal terkait?"
 
-        # Tambahkan prompt terbaru pengguna
-        messages_history.append({"role": "user", "content": corrected_prompt})
+Gaya respons:
+- Gunakan bahasa sederhana dan praktis
+- Format jelas dengan paragraf terpisah
+- Hindari jargon teknis berlebihan"""
+
+        payload = {
+            "model": "deepseek-chat",
+            "messages": [{"role": "system", "content": system_prompt}] + history,
+            "temperature": 0.5,
+            "max_tokens": 1000
+        }
 
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
             "Content-Type": "application/json"
         }
 
-        payload = {
-            "model": "deepseek-chat",
-            "messages": [
-                {"role": "system", "content": """Anda adalah Asisten Pertanian PeTaniku yang ahli di bidang:
-- Pertanian dan perkebunan
-- Cuaca dan iklim untuk pertanian
-- Pengelolaan tanaman dan tanah
-- Teknologi pertanian
-
-Bantu pengguna dengan:
-1. Berikan jawaban singkat dan jelas untuk pertanyaan pertanian
-2. Jika pertanyaan di luar topik, jawab dengan sopan:
-   \"Maaf, saya hanya dapat membantu tentang pertanian. Ada yang bisa saya bantu terkait tanaman, cuaca pertanian, atau hal terkait?\"
-
-Gaya respons:
-- Gunakan bahasa sederhana dan praktis
-- Format jelas dengan paragraf terpisah
-- Hindari jargon teknis berlebihan"""}] + messages_history,
-            "temperature": 0.5,
-            "max_tokens": 1000
-        }
-
-        response = requests.post(
-            "https://api.deepseek.com/v1/chat/completions",
-            headers=headers,
-            json=payload
-        )
+        response = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload)
 
         if response.status_code == 200:
             result = response.json()
@@ -805,7 +831,7 @@ Gaya respons:
     except Exception as e:
         logger.error(f"Error getting DeepSeek response: {e}")
         return "Maaf, terjadi kesalahan dalam memproses permintaan Anda."
-    
+
 def extract_topic_from_question(question):
     try:
         response = get_deepseek_response(
