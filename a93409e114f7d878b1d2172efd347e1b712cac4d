@@ -1,0 +1,181 @@
+[33mcommit d85019ff856ed71ed2d31179960ce15f4819ca6c[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mcoba[m[33m, [m[1;31morigin/coba[m[33m)[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Sat Jun 21 00:00:13 2025 +0700
+
+    not yet
+
+[33mcommit a93409e114f7d878b1d2172efd347e1b712cac4d[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Thu Jun 19 20:24:05 2025 +0700
+
+    done
+
+[33mcommit 1e1ca3efcbe721441dd8ac684144b211aada11b0[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Mon Jun 16 14:24:14 2025 +0700
+
+    done iterasi 2
+
+[33mcommit 5929b92276536f87b2a30572a16e18c4ae430005[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Sun Jun 15 19:39:42 2025 +0700
+
+    done aplikasi
+
+[33mcommit 165602741a5330446444524e74c47764fc34db40[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Sun Jun 15 15:34:48 2025 +0700
+
+    done aplikasi
+
+[33mcommit b972a8edf86de85465117ee4b13a152226ee71b8[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Fri Jun 13 08:10:46 2025 +0700
+
+    done
+
+[33mcommit 1a6f2873cc3e9e3a8e65f7b9dc2f4882c215e5cf[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Thu Jun 12 16:56:51 2025 +0700
+
+    done iterasi 2
+
+[33mcommit f0e7d7a9dcf4b6a9177e1f5bdfaaaeb9275bd65c[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Thu Jun 12 00:08:05 2025 +0700
+
+    done tutor error
+
+[33mcommit bb2eb674084b83e24930f02d8f291dc677feb3d3[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Wed Jun 11 18:43:58 2025 +0700
+
+    done tinggal tutorial
+
+[33mcommit 42572b4ffd6279bfde316b3adeb24aa183d02681[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Sun Jun 8 12:28:52 2025 +0700
+
+    sudah berhasil deteksi gambar
+
+[33mcommit 05893e014be8883d3013677536ac9ef95ff71f6a[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Sat Jun 7 09:04:38 2025 +0700
+
+    berhasil analyze
+
+[33mcommit b32d70303804d3a1948100353de8f8a5f80698f1[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Mon May 12 02:10:20 2025 +0700
+
+    no image
+
+[33mcommit 59342bab79ea2a2bee1e59eaedd6bc09d2ee6c86[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Wed May 7 14:47:27 2025 +0700
+
+    nothing change
+
+[33mcommit 1cbf24da19f958daba69b90251f37134b4f0246a[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Tue Apr 15 15:47:05 2025 +0700
+
+    versi inggris masih error di beberapa
+
+[33mcommit 7737f2a24332f7ee8c483953eca9f745e42ab33f[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Wed Apr 9 04:34:52 2025 +0700
+
+    error but done ###
+
+[33mcommit d06e199ba3c1f9486a551d80f53acaec296dc444[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Tue Apr 8 01:35:18 2025 +0700
+
+    done all api but still loading with lt error
+
+[33mcommit ab85e3ee1eaff4b37c497c93f8efdc356b80522b[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Sat Mar 29 03:33:52 2025 +0700
+
+    audio korupt berhasil disimpan di uploads
+
+[33mcommit 39855c4d65611f941b2e2f3298e6a0b1d32412f3[m
+Merge: 7a2cb60 43270f0
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Sat Mar 29 03:33:00 2025 +0700
+
+    Resolve merge conflict in api_config.dart
+
+[33mcommit 43270f050565bcfa0de68c45358619481f7bde6d[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Sat Mar 29 03:27:48 2025 +0700
+
+    audio korupt berhasil disimpan di uploads
+
+[33mcommit 94ac5ad6a32a899fdfaabe7de1a632ad5f0680c3[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Fri Mar 28 16:55:15 2025 +0700
+
+    fix ai, cuaca, no *, pesan dihapus lokal tapi gagal diserver
+
+[33mcommit c5c1a213cbb1977be88c20785821f94af76aad77[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Fri Mar 28 12:43:11 2025 +0700
+
+    sqlalchemy audio saved
+
+[33mcommit 7a2cb60d76f3122e0b442b641fd04d69b48acbb5[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Fri Mar 28 05:06:50 2025 +0700
+
+    fix ai no *
+
+[33mcommit 74f14f4adcaa8d72f2b58d297ce1d6d4e78cbbbf[m
+Merge: 5322b25 d5cc099
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Fri Mar 28 05:03:48 2025 +0700
+
+    fix ai no *
+
+[33mcommit 5322b258a16011e5f0097573d6f07a7f04b4c4ce[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Fri Mar 28 04:56:14 2025 +0700
+
+    fix ai no *
+
+[33mcommit d5cc0994f8708bf8204510fb107e5e72ababa826[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Fri Mar 28 04:42:42 2025 +0700
+
+    fix ai no *
+
+[33mcommit 7a3eb3b7f1531657568fa91c8f31bb465f2eebcc[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Wed Mar 26 17:48:26 2025 +0700
+
+    ai berhasil, masih ada #* pda pesan
+
+[33mcommit cfa1e11d0d351e951b55b355c62c02c1233bb2ee[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Wed Mar 26 16:39:13 2025 +0700
+
+    cuaca fix banget
+
+[33mcommit 7c689bd5bdbb8639ad89980b78decce39a1cd567[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Wed Mar 26 15:23:35 2025 +0700
+
+    cuaca fix banget
+
+[33mcommit 94baabe06186cb128bc60188f8c5a2d74dfcd806[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Wed Mar 26 05:34:29 2025 +0700
+
+    lokasi berhasil
+
+[33mcommit 846def5390429679798c8b2e05c013690470d6cf[m
+Author: agatamilia <amiliaagata@student.telkomuniversity.ac.id>
+Date:   Wed Mar 26 05:31:50 2025 +0700
+
+    Initial commit

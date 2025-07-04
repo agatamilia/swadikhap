@@ -1,0 +1,1691 @@
+IMPORT tempfile
+
+from flask IMPORT Flask, json, request, jsonify, send_from_directory
+
+from flask_sqlalchemy IMPORT SQLAlchemy
+
+IMPORT os
+
+IMPORT requests
+
+IMPORT uuid
+
+from datetime IMPORT datetime
+
+from werkzeug.utils IMPORT secure_filename
+
+IMPORT subprocess
+
+from dotenv IMPORT load_dotenv
+
+IMPORT whisper
+
+IMPORT logging
+
+from flask_ngrok IMPORT run_with_ngrok
+
+from flask_cors IMPORT CORS
+
+from flask_migrate IMPORT Migrate
+
+IMPORT base64
+
+IMPORT os
+
+from roboflow IMPORT Roboflow
+
+from PIL IMPORT Image
+
+
+
+# Load environment variables
+
+load_dotenv()
+
+
+
+# Konfigurasi logging
+
+logging.basicConfig(level=logging.INFO)
+
+SET logger TO logging.getLogger(__name__)
+
+
+
+SET app TO Flask(__name__)
+
+run_with_ngrok(app)  # Jalankan dengan ngrok untuk testing
+
+CORS(app)  # Mengizinkan CORS agar API bisa diakses dari frontend
+
+
+
+# Database configuration
+
+SET app.config['SQLALCHEMY_DATABASE_URI'] TO f"sqlite:///{os.path.join(os.path.dirname(__file__), 'chatbot.db')}"
+
+SET app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] TO False
+
+SET db TO SQLAlchemy(app)
+
+
+
+# API Keys
+
+SET OPENWEATHER_API_KEY TO os.getenv("OPENWEATHER_API_KEY")
+
+SET DEEPSEEK_API_KEY TO os.getenv("DEEPSEEK_API_KEY")
+
+SET ROBOFLOW_API_KEY TO os.getenv("ROBOFLOW_API_KEY")
+
+
+
+# Durasi maksimal dan minimal file audio (detik)
+
+SET MAX_AUDIO_DURATION TO 30  # seconds
+
+SET MIN_AUDIO_DURATION TO 0.5  # seconds
+
+
+
+# Folder sementara untuk menyimpan file upload
+
+SET UPLOAD_FOLDER TO 'temp_uploads'
+
+
+
+# Inisialisasi model dari Roboflow untuk deteksi penyakit tanaman
+
+SET rf TO Roboflow(api_key=ROBOFLOW_API_KEY)
+
+SET project TO rf.workspace("institue-of-southern-punjab").project("sample-ixosm")
+
+SET model TO project.version(1).model
+
+
+
+DEFINE FUNCTION convert_png_to_jpeg(filepath):
+
+    IF not filepath.lower().endswith(".png"):
+
+        RETURN filepath
+
+    TRY:
+
+        SET image TO Image.open(filepath).convert("RGB")
+
+        SET new_path TO filepath.replace(".png", ".jpg")
+
+        image.save(new_path, "JPEG")
+
+        RETURN new_path
+
+    except Exception as e:
+
+        logger.error(f"Gagal mengonversi gambar PNG: {e}")
+
+        RETURN filepath
+
+
+
+# Database Models
+
+DEFINE CLASS Session(db.Model):
+
+    SET __tablename__ TO 'sessions'
+
+    
+
+    SET id TO db.Column(db.String(36), primary_key=True)
+
+    SET device_id TO db.Column(db.String(255), nullable=False, index=True)
+
+    SET name TO db.Column(db.String(100), nullable=False)
+
+    SET topic TO db.Column(db.String(255), nullable=True)
+
+    SET created_at TO db.Column(db.BigInteger, nullable=False)
+
+    SET updated_at TO db.Column(db.BigInteger, nullable=False)
+
+    
+
+    SET messages TO db.relationship('Message', backref='session', lazy=True, cascade='all, delete-orphan')
+
+
+
+DEFINE CLASS Message(db.Model):
+
+    SET __tablename__ TO 'messages'
+
+    
+
+    SET id TO db.Column(db.String(36), primary_key=True)
+
+    SET session_id TO db.Column(db.String(36), db.ForeignKey('sessions.id'), nullable=False)
+
+    SET device_id TO db.Column(db.String(255), nullable=False, index=True)
+
+    SET content TO db.Column(db.Text, nullable=False)
+
+    SET role TO db.Column(db.String(20), nullable=False)
+
+    SET timestamp TO db.Column(db.BigInteger, nullable=False)
+
+    SET image_path TO db.Column(db.String(255))
+
+    SET audio_path TO db.Column(db.String(255))
+
+
+
+SET migrate TO Migrate(app, db)
+
+
+
+# Whisper model initialization
+
+TRY:
+
+    SET WHISPER_MODEL TO whisper.load_model("small")
+
+    logging.info("Whisper model loaded successfully")
+
+except Exception as e:
+
+    logging.error(f"Failed to load Whisper model: {e}")
+
+    SET WHISPER_MODEL TO None
+
+
+
+with app.app_context():
+
+    # db.drop_all()  # WARNING: Deletes all data!
+
+    db.create_all()
+
+
+
+DEFINE FUNCTION get_temp_upload_folder(device_id, file_type):
+
+    SET temp_folder TO os.path.join(tempfile.gettempdir(), device_id, file_type)
+
+    os.makedirs(temp_folder, exist_ok=True)
+
+    RETURN temp_folder
+
+
+
+@app.route('/')
+
+DEFINE FUNCTION home():
+
+    RETURN jsonify({"status": "Flask is running!"})
+
+
+
+# Session management endpoints
+
+@app.route('/api/sessions', methods=['GET'])
+
+DEFINE FUNCTION get_sessions():
+
+    TRY:
+
+        SET device_id TO request.args.get('device_id')
+
+        
+
+        IF not device_id:
+
+            RETURN jsonify({"error": "Device ID is required"}), 400
+
+        
+
+        SET sessions TO Session.query.filter_by(device_id=device_id).order_by(Session.updated_at.desc()).all()
+
+        
+
+        RETURN jsonify([{
+
+            "id": session.id,
+
+            "name": session.name,
+
+            "device_id": session.device_id,
+
+            "created_at": session.created_at,
+
+            "updated_at": session.updated_at
+
+        } FOR session IN sessions])
+
+    except Exception as e:
+
+        logger.error(f"Error getting sessions: {e}")
+
+        RETURN jsonify({"error": "Failed to get sessions"}), 500
+
+
+
+@app.route('/api/sessions', methods=['POST'])
+
+DEFINE FUNCTION create_session():
+
+    TRY:
+
+        SET data TO request.json
+
+        SET name TO data.get('name', 'New Chat')
+
+        SET device_id TO data.get('device_id') 
+
+        
+
+        IF not device_id:
+
+            RETURN jsonify({"error": "Device ID is required"}), 400
+
+        
+
+        SET session_id TO str(uuid.uuid4())
+
+        SET current_time TO int(datetime.now().timestamp() * 1000)
+
+        
+
+        SET new_session TO Session(
+
+            id=session_id,
+
+            name=name,
+
+            device_id=device_id,  # Simpan device_id
+
+            created_at=current_time,
+
+            updated_at=current_time
+
+        )
+
+        
+
+        db.session.add(new_session)
+
+        db.session.commit()
+
+        
+
+        RETURN jsonify({
+
+            "id": session_id,
+
+            "name": name,
+
+            "device_id": device_id,  # Include device_id IN response
+
+            "created_at": current_time,
+
+            "updated_at": current_time
+
+        })
+
+    except Exception as e:
+
+        logger.error(f"Error creating session: {e}")
+
+        db.session.rollback()
+
+        RETURN jsonify({"error": "Failed to create session"}), 500
+
+
+
+@app.route('/api/sessions/<session_id>', methods=['PUT'])
+
+DEFINE FUNCTION update_session(session_id):
+
+    TRY:
+
+        SET data TO request.json
+
+        SET name TO data.get('name')
+
+        
+
+        IF not name:
+
+            RETURN jsonify({"error": "Name is required"}), 400
+
+        
+
+        SET session TO db.session.get(Session, session_id)
+
+        IF not session:
+
+            RETURN jsonify({"error": "Session not found"}), 404
+
+        
+
+        SET current_time TO int(datetime.now().timestamp() * 1000)
+
+        SET session.name TO name
+
+        SET session.updated_at TO current_time
+
+        
+
+        db.session.commit()
+
+        
+
+        RETURN jsonify({"message": "Session updated successfully"})
+
+    except Exception as e:
+
+        logger.error(f"Error updating session: {e}")
+
+        db.session.rollback()
+
+        RETURN jsonify({"error": "Failed to update session"}), 500
+
+
+
+@app.route('/api/sessions/<session_id>', methods=['DELETE'])
+
+DEFINE FUNCTION delete_session(session_id):
+
+    TRY:
+
+        SET session TO db.session.get(Session, session_id)
+
+        IF not session:
+
+            RETURN jsonify({"error": "Session not found"}), 404
+
+        
+
+        db.session.delete(session)
+
+        db.session.commit()
+
+        
+
+        RETURN jsonify({"message": "Session deleted successfully"})
+
+    except Exception as e:
+
+        logger.error(f"Error deleting session: {e}")
+
+        db.session.rollback()
+
+        RETURN jsonify({"error": "Failed to delete session"}), 500
+
+
+
+@app.route('/api/sessions/<session_id>/messages', methods=['GET'])
+
+DEFINE FUNCTION get_messages(session_id):
+
+    TRY:
+
+        SET device_id TO request.args.get('device_id')
+
+        
+
+        IF not device_id:
+
+            RETURN jsonify({"error": "Device ID is required"}), 400
+
+        
+
+        SET messages TO Message.query.filter_by(session_id=session_id, device_id=device_id)\
+
+                              .order_by(Message.timestamp.asc())\
+
+                              .all()
+
+        
+
+        RETURN jsonify([{
+
+            "id": msg.id,
+
+            "session_id": msg.session_id,
+
+            "content": msg.content,
+
+            "role": msg.role,
+
+            "timestamp": msg.timestamp,
+
+            "image_path": msg.image_path,
+
+            "audio_path": msg.audio_path
+
+        } FOR msg IN messages])
+
+    except Exception as e:
+
+        logger.error(f"Error getting messages: {e}")
+
+        RETURN jsonify({"error": "Failed to get messages"}), 500
+
+
+
+@app.route('/api/sessions/<session_id>/messages', methods=['POST'])
+
+DEFINE FUNCTION save_message(session_id):
+
+    TRY:
+
+        SET data TO request.json
+
+        IF not data:
+
+            RETURN jsonify({"error": "No data provided"}), 400
+
+
+
+        # Validate required fields
+
+        SET required_fields TO ['content', 'role', 'device_id']
+
+        IF not all(field IN data FOR field IN required_fields):
+
+            RETURN jsonify({"error": f"Missing required fields: {required_fields}"}), 400
+
+
+
+        # Get session
+
+        SET session TO db.session.get(Session, session_id)
+
+        IF not session:
+
+            RETURN jsonify({"error": "Session not found"}), 404
+
+
+
+        # Create message
+
+        SET message TO Message(
+
+            id=str(uuid.uuid4()),
+
+            session_id=session_id,
+
+            content=data['content'],
+
+            role=data['role'],
+
+            device_id=data['device_id'],  # Simpan device_id
+
+            timestamp=int(datetime.now().timestamp() * 1000),
+
+            image_path=data.get('image_path'),
+
+            audio_path=data.get('audio_path')
+
+        )
+
+
+
+        # Update session
+
+        SET session.updated_at TO int(datetime.now().timestamp() * 1000)
+
+
+
+        db.session.add(message)
+
+        db.session.commit()
+
+
+
+        RETURN jsonify({
+
+            "id": message.id,
+
+            "session_id": session_id,
+
+            "content": message.content,
+
+            "role": message.role,
+
+            "timestamp": message.timestamp,
+
+            "image_path": message.image_path,
+
+            "audio_path": message.audio_path
+
+        }), 201
+
+    except Exception as e:
+
+        db.session.rollback()
+
+        logger.error(f"Error saving message: {str(e)}")
+
+        RETURN jsonify({"error": "Failed to save message", "details": str(e)}), 500
+
+    
+
+# @app.route('/api/sessions/<session_id>/messages', methods=['DELETE'])
+
+# DEFINE FUNCTION clear_messages(session_id):
+
+#     TRY:
+
+#         Message.query.filter_by(session_id=session_id).delete()
+
+#         db.session.commit()
+
+        
+
+#         RETURN jsonify({"message": "All messages cleared successfully"})
+
+#     except Exception as e:
+
+#         logger.error(f"Error clearing messages: {e}")
+
+#         db.session.rollback()
+
+#         RETURN jsonify({"error": "Failed to clear messages"}), 500
+
+
+
+@app.route('/api/weather', methods=['GET'])
+
+DEFINE FUNCTION get_weather():
+
+    TRY:
+
+        SET lat TO request.args.get('lat', type=float)
+
+        SET lon TO request.args.get('lon', type=float)
+
+        SET is_mock TO request.args.get('mock', 'false').lower() EQUALS 'true'
+
+        
+
+        IF is_mock:
+
+            RETURN jsonify(get_mock_weather_data())
+
+            
+
+        # Get weather data from OpenWeather
+
+        SET weather_data TO get_openweather_data(lat, lon)
+
+        
+
+        IF not weather_data:
+
+            RETURN jsonify({
+
+                'error': 'Failed to fetch weather data',
+
+                'mock': True,
+
+                'temperature': 30.0,
+
+                'condition': 'sunny',
+
+                'description': 'Cerah',
+
+                'location': 'Jakarta',
+
+                'advice': 'Cocok untuk panen atau pengeringan hasil panen'
+
+            }), 500
+
+        
+
+        RETURN jsonify({
+
+            'temperature': weather_data['main']['temp'],
+
+            'condition': map_weather_condition(weather_data['weather'][0]['main']),
+
+            'description': weather_data['weather'][0]['description'],
+
+            'location': weather_data.get('name', 'Unknown Location'),
+
+            'advice': get_farming_advice(weather_data['weather'][0]['main'])
+
+        })
+
+        
+
+    except Exception as e:
+
+        logger.error(f"Weather API error: {e}")
+
+        RETURN jsonify({
+
+            'error': str(e),
+
+            'mock': True,
+
+            'temperature': 30.0,
+
+            'condition': 'sunny',
+
+            'description': 'Cerah',
+
+            'location': 'Jakarta',
+
+            'advice': 'Cocok untuk panen atau pengeringan hasil panen'
+
+        }), 500
+
+
+
+@app.route('/api/transcribe', methods=['POST'])
+
+DEFINE FUNCTION transcribe_audio():
+
+    IF 'audio' not IN request.files:
+
+        RETURN jsonify({"error": "No audio file provided"}), 400
+
+
+
+    SET audio_file TO request.files['audio']
+
+    IF audio_file.filename EQUALS '':
+
+        RETURN jsonify({"error": "Empty filename"}), 400
+
+
+
+    SET device_id TO request.form.get('device_id')
+
+    SET session_id TO request.form.get('session_id')
+
+
+
+    IF not device_id or not session_id:
+
+        RETURN jsonify({"error": "Device ID and Session ID are required"}), 400
+
+
+
+    TRY:
+
+        SET temp_folder TO get_temp_upload_folder(device_id, 'audio')
+
+        SET filename TO f"audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}.wav"
+
+        SET filepath TO os.path.join(temp_folder, filename)
+
+        audio_file.save(filepath)
+
+
+
+        SET validation TO validate_audio_file(filepath)
+
+        IF validation.get('error'):
+
+            RETURN jsonify(validation), 400
+
+
+
+        # Deteksi bahasa terlebih dahulu
+
+        SET audio TO whisper.load_audio(filepath)
+
+        SET audio TO whisper.pad_or_trim(audio)
+
+        SET mel TO whisper.log_mel_spectrogram(audio).to(WHISPER_MODEL.device)
+
+        SET _, probs TO WHISPER_MODEL.detect_language(mel)
+
+        SET detected_lang_code TO max(probs, key=probs.get)
+
+        SET detected_lang_prob TO round(probs[detected_lang_code] * 100, 2)
+
+
+
+        # Transkripsi dengan asumsi konteks bahasa lokal
+
+        SET result TO WHISPER_MODEL.transcribe(
+
+            filepath,
+
+            language="id",
+
+            task="transcribe",
+
+            initial_prompt="Bahasa Indonesia digunakan di percakapan ini."
+
+        )
+
+
+
+        SET transcription TO result.get("text", "").strip()
+
+        IF not transcription:
+
+            RETURN jsonify({"error": "No speech detected"}), 400
+
+
+
+        # Tambahkan pesan ke database
+
+        SET message TO Message(
+
+            id=str(uuid.uuid4()),
+
+            session_id=session_id,
+
+            device_id=device_id,
+
+            content=transcription,
+
+            role='user',
+
+            timestamp=int(datetime.now().timestamp() * 1000),
+
+            audio_path=f"/uploads/temp/{device_id}/audio/{filename}"
+
+        )
+
+        db.session.add(message)
+
+
+
+        SET session TO db.session.get(Session, session_id)
+
+        IF session:
+
+            SET session.updated_at TO int(datetime.now().timestamp() * 1000)
+
+
+
+        db.session.commit()
+
+
+
+        # Jawaban dari DeepSeek
+
+        SET response_text TO get_deepseek_response(
+
+            transcription,
+
+            session_id=session_id,
+
+            device_id=device_id
+
+        )
+
+        SET assistant_message TO Message(
+
+            id=str(uuid.uuid4()),
+
+            session_id=session_id,
+
+            device_id=device_id,
+
+            content=response_text,
+
+            role="assistant",
+
+            timestamp=int(datetime.now().timestamp() * 1000)
+
+        )
+
+        db.session.add(assistant_message)
+
+        db.session.commit()
+
+
+
+        RETURN jsonify({
+
+            "status": "success",
+
+            "detected_language": detected_lang_code,
+
+            "language_confidence": detected_lang_prob,
+
+            "transcription": transcription,
+
+            "response": response_text,
+
+            "audio_url": f"/uploads/temp/{device_id}/audio/{filename}"
+
+        })
+
+
+
+    except Exception as e:
+
+        logging.error(f"Transcription error: {str(e)}")
+
+        RETURN jsonify({"error": "Audio processing failed"}), 500
+
+
+
+DEFINE FUNCTION validate_audio_file(filepath):
+
+    """Validasi format dan durasi audio"""
+
+    TRY:
+
+        # Cek apakah file ada
+
+        IF not os.path.exists(filepath):
+
+            RETURN {"error": "File not found"}
+
+            
+
+        # Cek ukuran file minimal (100 bytes)
+
+        IF os.path.getsize(filepath) < 100:
+
+            RETURN {"error": "File too small (corrupted?)"}
+
+        
+
+        # Validasi dengan ffprobe
+
+        SET result TO subprocess.run([
+
+            'ffprobe', '-v', 'error',
+
+            '-show_entries', 'stream=codec_type,sample_rate,channels',
+
+            '-of', 'json',
+
+            filepath
+
+        ], capture_output=True, text=True)
+
+        
+
+        IF result.RETURNcode != 0:
+
+            RETURN {"error": "Invalid audio file", "details": result.stderr}
+
+            
+
+        # Parse output ffprobe
+
+        SET probe_data TO json.loads(result.stdout)
+
+        SET streams TO probe_data.get('streams', [])
+
+        
+
+        IF not any(s.get('codec_type') EQUALS 'audio' FOR s IN streams):
+
+            RETURN {"error": "No audio stream found"}
+
+            
+
+        # Cek sample rate dan channels
+
+        FOR stream IN streams:
+
+            IF stream.get('codec_type') EQUALS 'audio':
+
+                IF int(stream.get('sample_rate', 0)) < 8000:
+
+                    RETURN {"error": "Sample rate too low (min 8kHz)"}
+
+                IF int(stream.get('channels', 0)) < 1:
+
+                    RETURN {"error": "No audio channels"}
+
+                    
+
+        RETURN {"valid": True}
+
+        
+
+        
+
+    except json.JSONDecodeError:
+
+        RETURN {"error": "Invalid JSON response from ffprobe"}
+
+    except Exception as e:
+
+        RETURN {"error": f"Validation error: {str(e)}"}
+
+
+
+@app.route("/api/analyze/image", methods=["POST"])
+
+DEFINE FUNCTION analyze_image():
+
+    from datetime IMPORT datetime
+
+    IMPORT uuid
+
+    IMPORT tempfile
+
+
+
+    SET device_id TO request.form.get("device_id")
+
+    SET session_id TO request.form.get("session_id")
+
+    SET note TO request.form.get("note", "").strip()
+
+
+
+    IF not device_id:
+
+        RETURN jsonify({"error": "Device ID is required"}), 400
+
+
+
+    IF "file" not IN request.files:
+
+        RETURN jsonify({"error": "No file uploaded"}), 400
+
+
+
+    # Simpan file gambar
+
+    SET file TO request.files["file"]
+
+    SET filename TO secure_filename(file.filename)
+
+    SET folder TO os.path.join(tempfile.gettempdir(), device_id, "images")
+
+    os.makedirs(folder, exist_ok=True)
+
+    SET filepath TO os.path.join(folder, filename)
+
+    file.save(filepath)
+
+
+
+    SET filepath TO convert_png_to_jpeg(filepath)
+
+    logger.info(f"✅ File disimpan di: {filepath}")
+
+    logger.info(f"📏 Ukuran file: {os.path.getsize(filepath)} bytes")
+
+    logger.info(f"📂 File ada?: {'Ya' IF os.path.exists(filepath) else 'Tidak'}")
+
+
+
+    TRY:
+
+        # Jalankan prediksi
+
+        SET result TO model.predict(filepath).json()
+
+        logger.info(f"📊 Hasil prediksi mentah dari Roboflow: {result}")
+
+        SET predictions TO result.get("predictions", [])
+
+
+
+        IF not predictions:
+
+            SET explanation TO "Tidak terdeteksi penyakit pada gambar tersebut. Pastikan gambar jelas dan fokus pada bagian daun atau tanaman yang bermasalah."
+
+            RETURN jsonify({
+
+                "detected": None,
+
+                "confidence": 0.0,
+
+                "explanation": explanation,
+
+                "image_url": f"/uploads/temp/{device_id}/images/{os.path.basename(filepath)}"
+
+            })
+
+
+
+        # Filter prediksi yang valid
+
+        SET filtered_preds TO [p FOR p IN predictions IF "confidence" IN p and "class" IN p]
+
+        IF not filtered_preds:
+
+            SET explanation TO "Hasil prediksi tidak lengkap atau tidak valid."
+
+            RETURN jsonify({
+
+                "detected": None,
+
+                "confidence": 0.0,
+
+                "explanation": explanation,
+
+                "image_url": f"/uploads/temp/{device_id}/images/{os.path.basename(filepath)}"
+
+            })
+
+
+
+        # Pilih prediksi dengan confidence tertinggi
+
+        SET top_pred TO max(filtered_preds, key=lambda p: p.get("confidence", 0))
+
+        SET label TO top_pred.get("class", "Tidak diketahui")
+
+        SET confidence TO round(top_pred.get("confidence", 0) * 100, 2)
+
+
+
+        # Buat prompt untuk LLM
+
+        IF note:
+
+            SET prompt TO f"Apa itu penyakit '{label}' pada tanaman dan bagaimana cara mengatasinya? Berikut kondisi tambahan dari pengguna: {note}"
+
+        ELSE:
+
+            SET prompt TO f"Apa itu penyakit '{label}' pada tanaman dan bagaimana cara mengatasinya?"
+
+
+
+        SET explanation TO get_deepseek_response(prompt)
+
+
+
+        SET now TO int(datetime.now().timestamp() * 1000)
+
+        SET session TO db.session.get(Session, session_id) IF session_id else None
+
+
+
+        IF session:
+
+            # Simpan hanya note + gambar sebagai pesan user
+
+            db.session.add(Message(
+
+                id=str(uuid.uuid4()),
+
+                session_id=session_id,
+
+                device_id=device_id,
+
+                content=note IF note else "",
+
+                role="user",
+
+                timestamp=now,
+
+                image_path=f"/uploads/temp/{device_id}/images/{os.path.basename(filepath)}"
+
+            ))
+
+
+
+            # Simpan respons LLM jika belum duplikat
+
+            SET existing TO db.session.query(Message).filter_by(
+
+                session_id=session_id,
+
+                content=explanation,
+
+                role="assistant"
+
+            ).first()
+
+
+
+            IF not existing:
+
+                db.session.add(Message(
+
+                    id=str(uuid.uuid4()),
+
+                    session_id=session_id,
+
+                    device_id=device_id,
+
+                    content=explanation,
+
+                    role="assistant",
+
+                    timestamp=now + 1
+
+                ))
+
+
+
+            SET session.updated_at TO now + 1
+
+            db.session.commit()
+
+
+
+        RETURN jsonify({
+
+            "detected": label,
+
+            "confidence": confidence,
+
+            "explanation": explanation,
+
+            "image_url": f"/uploads/temp/{device_id}/images/{os.path.basename(filepath)}"
+
+        })
+
+
+
+    except Exception as e:
+
+        logger.error(f"Image analysis error: {str(e)}")
+
+        RETURN jsonify({"error": str(e)}), 500
+
+
+
+@app.route('/api/chat', methods=['POST'])
+
+DEFINE FUNCTION chat():
+
+    TRY:
+
+        SET data TO request.json
+
+        SET message TO data.get('message', '').strip()
+
+        SET session_id TO data.get('session_id', '')
+
+        SET device_id TO data.get('device_id', '')
+
+
+
+        IF not message:
+
+            RETURN jsonify({"error": "Message is required"}), 400
+
+        IF not session_id or not device_id:
+
+            RETURN jsonify({"error": "Session ID and Device ID are required"}), 400
+
+
+
+        SET session TO db.session.get(Session, session_id)
+
+        IF not session:
+
+            RETURN jsonify({"error": "Session not found"}), 404
+
+
+
+        # Simpan topik jika belum ada
+
+        IF not session.topic:
+
+            SET extracted_topic TO extract_topic_from_question(message)
+
+            SET session.topic TO extracted_topic
+
+            db.session.commit()
+
+
+
+        # Panggil DeepSeek dengan riwayat + topik
+
+        SET assistant_raw_response TO get_deepseek_response(
+
+            message,
+
+            session_id=session_id,
+
+            device_id=device_id
+
+        )
+
+
+
+        SET formatted_message TO assistant_raw_response.replace('###', '').replace('*', '').strip()
+
+        SET current_time TO int(datetime.now().timestamp() * 1000)
+
+
+
+        # Simpan pesan user dan assistant
+
+        SET user_message TO Message(
+
+            id=str(uuid.uuid4()),
+
+            session_id=session_id,
+
+            device_id=device_id,
+
+            content=message,
+
+            role='user',
+
+            timestamp=current_time
+
+        )
+
+        SET assistant_message TO Message(
+
+            id=str(uuid.uuid4()),
+
+            session_id=session_id,
+
+            device_id=device_id,
+
+            content=formatted_message,
+
+            role='assistant',
+
+            timestamp=current_time + 1
+
+        )
+
+
+
+        SET session.updated_at TO current_time
+
+        db.session.add_all([user_message, assistant_message])
+
+        db.session.commit()
+
+
+
+        RETURN jsonify({
+
+            "response": formatted_message,
+
+            "clean_tts_message": formatted_message,
+
+            "is_farming_related": True
+
+        })
+
+
+
+    except Exception as e:
+
+        logger.error(f"Chat API error: {e}")
+
+        RETURN jsonify({"error": "An error occurred WHILE processing your message"}), 500
+
+
+
+@app.route('/uploads/audio/<filename>')
+
+DEFINE FUNCTION serve_audio(filename):
+
+    RETURN send_from_directory(UPLOAD_FOLDER, filename)
+
+
+
+@app.route('/uploads/images/<filename>')
+
+DEFINE FUNCTION serve_image(filename):
+
+    RETURN send_from_directory(UPLOAD_FOLDER, filename)
+
+
+
+DEFINE FUNCTION load_whisper_model():
+
+    TRY:
+
+        SET model TO whisper.load_model("base")
+
+        RETURN model
+
+    except Exception as e:
+
+        logger.error(f"Failed to load Whisper model: {str(e)}")
+
+        RETURN None
+
+
+
+SET app.whisper_model TO load_whisper_model()
+
+
+
+@app.route('/uploads/temp/<device_id>/audio/<filename>')
+
+DEFINE FUNCTION serve_audio_file(device_id, filename):
+
+    RETURN send_from_directory(os.path.join(tempfile.gettempdir(), device_id, 'audio'), filename)
+
+
+
+@app.route('/uploads/temp/<device_id>/images/<filename>')
+
+DEFINE FUNCTION serve_image_file(device_id, filename):
+
+    RETURN send_from_directory(os.path.join(tempfile.gettempdir(), device_id, 'images'), filename)
+
+
+
+
+
+DEFINE FUNCTION map_weather_condition(weather_main):
+
+    """Map OpenWeather conditions to our frontend conditions"""
+
+    SET weather_main TO weather_main.lower()
+
+    
+
+    IF any(x IN weather_main FOR x IN ['clear', 'sun']):
+
+        RETURN 'sunny'
+
+    ELSEIF any(x IN weather_main FOR x IN ['cloud', 'fog', 'mist', 'haze']):
+
+        RETURN 'cloudy'
+
+    ELSEIF any(x IN weather_main FOR x IN ['rain', 'drizzle', 'shower', 'thunder', 'storm']):
+
+        RETURN 'rainy'
+
+    ELSE:
+
+        RETURN 'cloudy'  # Default
+
+
+
+DEFINE FUNCTION get_openweather_data(lat, lon):
+
+    """Fetch weather data from OpenWeather API"""
+
+    TRY:
+
+        SET url TO f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={OPENWEATHER_API_KEY}&units=metric&lang=id"
+
+        SET response TO requests.get(url)
+
+        response.raise_for_status()
+
+        RETURN response.json()
+
+    except requests.exceptions.RequestException as e:
+
+        logger.error(f"OpenWeather API error: {e}")
+
+        RETURN None
+
+
+
+DEFINE FUNCTION get_farming_advice(weather_main):
+
+    """Get farming advice based on weather condition"""
+
+    SET weather_main TO weather_main.lower()
+
+    
+
+    IF any(x IN weather_main FOR x IN ['clear', 'sun']):
+
+        RETURN "Cocok untuk panen atau pengeringan hasil panen"
+
+    ELSEIF any(x IN weather_main FOR x IN ['cloud', 'fog', 'mist', 'haze']):
+
+        RETURN "Baik untuk menanam bibit atau penyemprotan pestisida"
+
+    ELSEIF any(x IN weather_main FOR x IN ['rain', 'drizzle', 'shower']):
+
+        RETURN "Hindari pemupukan dan penyemprotan pestisida"
+
+    ELSEIF any(x IN weather_main FOR x IN ['thunder', 'storm']):
+
+        RETURN "Pastikan drainase lahan baik untuk mencegah genangan"
+
+    ELSE:
+
+        RETURN "Pantau kondisi tanaman secara berkala"
+
+
+
+DEFINE FUNCTION get_mock_weather_data():
+
+    """Return mock weather data FOR testing"""
+
+    RETURN {
+
+        'temperature': 30.0,
+
+        'condition': 'sunny',
+
+        'description': 'Cerah',
+
+        'location': 'Jakarta',
+
+        'advice': 'Cocok untuk panen atau pengeringan hasil panen'
+
+    }
+
+
+
+DEFINE FUNCTION correct_user_question(raw_question):
+
+    TRY:
+
+        SET correction_payload TO {
+
+            "model": "deepseek-chat",
+
+            "messages": [
+
+                {"role": "system", "content": "Anda adalah asisten pintar yang tugasnya memperbaiki pertanyaan pengguna yang memiliki kesalahan ketik atau tidak jelas. Kembalikan versi pertanyaan yang lebih jelas, tanpa penjelasan tambahan."},
+
+                {"role": "user", "content": raw_question}
+
+            ],
+
+            "temperature": 0.3,
+
+            "max_tokens": 200
+
+        }
+
+
+
+        SET headers TO {
+
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+
+            "Content-Type": "application/json"
+
+        }
+
+
+
+        SET response TO requests.post(
+
+            "https://api.deepseek.com/v1/chat/completions",
+
+            headers=headers,
+
+            json=correction_payload
+
+        )
+
+
+
+        IF response.status_code EQUALS 200:
+
+            SET result TO response.json()
+
+            SET corrected TO result['choices'][0]['message']['content']
+
+            RETURN corrected.strip()
+
+        ELSE:
+
+            logger.warning(f"DeepSeek correction failed, using original: {response.text}")
+
+            RETURN raw_question
+
+    except Exception as e:
+
+        logger.error(f"Correction error: {e}")
+
+        RETURN raw_question
+
+
+
+DEFINE FUNCTION get_deepseek_response(prompt, session_id=None, device_id=None):
+
+    TRY:
+
+        SET session TO db.session.get(Session, session_id) IF session_id else None
+
+        SET topic TO session.topic.lower() IF session and session.topic else None
+
+        SET topic_instruction TO f"\n\nTopik yang sedang dibahas adalah **{topic}**.\n" IF topic else ""
+
+
+
+        # Koreksi pertanyaan
+
+        SET corrected_prompt TO correct_user_question(prompt)
+
+
+
+        # Ambil 2 pesan user terakhir yang sesuai topik
+
+        SET history TO []
+
+        IF session_id and device_id:
+
+            SET messages TO Message.query.filter_by(session_id=session_id, device_id=device_id)\
+
+                                    .order_by(Message.timestamp.desc())\
+
+                                    .all()
+
+            FOR msg IN messages:
+
+                IF msg.role EQUALS 'user' and (not topic or topic IN msg.content.lower()):
+
+                    history.append({"role": "user", "content": msg.content})
+
+                    IF len(history) >= 2:
+
+                        break
+
+        SET history TO list(reversed(history))  # Urutkan lama ke baru
+
+        history.append({"role": "user", "content": corrected_prompt})
+
+
+
+        # Prompt lama + sisipan topik
+
+        SET system_prompt TO f"""Anda adalah Asisten Pertanian PeTaniku yang ahli di bidang:
+
+- Pertanian dan perkebunan
+
+- Cuaca dan iklim untuk pertanian
+
+- Pengelolaan tanaman dan tanah
+
+- Teknologi pertanian
+
+{topic_instruction}
+
+Bantu pengguna dengan:
+
+1. Berikan jawaban singkat dan jelas untuk pertanyaan pertanian
+
+2. Jika pertanyaan di luar topik, jawab dengan sopan:
+
+   "Maaf, saya hanya dapat membantu tentang pertanian. Ada yang bisa saya bantu terkait tanaman, cuaca pertanian, atau hal terkait?"
+
+
+
+Gaya respons:
+
+- Gunakan bahasa sederhana dan praktis
+
+- Format jelas dengan paragraf terpisah
+
+- Hindari jargon teknis berlebihan"""
+
+
+
+        SET payload TO {
+
+            "model": "deepseek-chat",
+
+            "messages": [{"role": "system", "content": system_prompt}] + history,
+
+            "temperature": 0.5,
+
+            "max_tokens": 1000
+
+        }
+
+
+
+        SET headers TO {
+
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+
+            "Content-Type": "application/json"
+
+        }
+
+
+
+        SET response TO requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload)
+
+
+
+        IF response.status_code EQUALS 200:
+
+            SET result TO response.json()
+
+            RETURN result['choices'][0]['message']['content']
+
+        ELSE:
+
+            logger.error(f"DeepSeek API error: {response.text}")
+
+            RETURN "Maaf, saya tidak bisa memberikan jawaban saat ini."
+
+
+
+    except Exception as e:
+
+        logger.error(f"Error getting DeepSeek response: {e}")
+
+        RETURN "Maaf, terjadi kesalahan dalam memproses permintaan Anda."
+
+
+
+DEFINE FUNCTION extract_topic_from_question(question):
+
+    TRY:
+
+        SET response TO get_deepseek_response(
+
+            f"Apa topik utama dari pertanyaan ini? '{question}'. Beri jawaban singkat, maksimal 3 kata."
+
+        )
+
+        RETURN response.strip()
+
+    except Exception as e:
+
+        logger.error(f"Gagal ekstrak topik: {e}")
+
+        RETURN None
+
+
+
+IF __name__ EQUALS '__main__':
+
+    app.run()

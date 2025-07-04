@@ -284,17 +284,17 @@ def save_message(session_id):
         logger.error(f"Error saving message: {str(e)}")
         return jsonify({"error": "Failed to save message", "details": str(e)}), 500
     
-@app.route('/api/sessions/<session_id>/messages', methods=['DELETE'])
-def clear_messages(session_id):
-    try:
-        Message.query.filter_by(session_id=session_id).delete()
-        db.session.commit()
+# @app.route('/api/sessions/<session_id>/messages', methods=['DELETE'])
+# def clear_messages(session_id):
+#     try:
+#         Message.query.filter_by(session_id=session_id).delete()
+#         db.session.commit()
         
-        return jsonify({"message": "All messages cleared successfully"})
-    except Exception as e:
-        logger.error(f"Error clearing messages: {e}")
-        db.session.rollback()
-        return jsonify({"error": "Failed to clear messages"}), 500
+#         return jsonify({"message": "All messages cleared successfully"})
+#     except Exception as e:
+#         logger.error(f"Error clearing messages: {e}")
+#         db.session.rollback()
+#         return jsonify({"error": "Failed to clear messages"}), 500
 
 @app.route('/api/weather', methods=['GET'])
 def get_weather():
