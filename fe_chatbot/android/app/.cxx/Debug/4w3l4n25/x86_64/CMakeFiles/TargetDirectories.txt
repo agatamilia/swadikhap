@@ -1,0 +1,2 @@
+C:/Users/User/AMILIA - Telkom University/TA GAZH/swadikhap/fe_chatbot/android/app/.cxx/Debug/4w3l4n25/x86_64/CMakeFiles/edit_cache.dir
+C:/Users/User/AMILIA - Telkom University/TA GAZH/swadikhap/fe_chatbot/android/app/.cxx/Debug/4w3l4n25/x86_64/CMakeFiles/rebuild_cache.dir

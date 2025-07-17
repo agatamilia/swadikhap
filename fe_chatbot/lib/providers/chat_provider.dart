@@ -202,7 +202,7 @@ class ChatProvider with ChangeNotifier {
       scrollToBottomCallback?.call();
 
       await _apiService.saveMessage(userImageMessage, sessionId, _deviceId);
-      await _processImage(sessionId); // akan lanjut sendiri
+      await _processImage(sessionId, note: text.trim().isEmpty ? null : text.trim());
       return;
     }
 
@@ -526,33 +526,29 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  Future<void> _processImage(String sessionId) async {
+  Future<void> _processImage(String sessionId,{String? note}) async {
     if (_pendingImage == null) return;
 
     _isLoading = true;
     notifyListeners();
 
     try {
-      // Ubah ke .jpg jika perlu
       final jpgImage = await _convertToJpgIfNeeded(_pendingImage!);
-
-      // Kompres gambar setelah dijamin .jpg
       final compressed = await _compressImage(jpgImage);
 
-      final start = DateTime.now(); // waktu mulai
+      final start = DateTime.now();
       final response = await _imageService.uploadAndAnalyzeImage(
         compressed,
         sessionId,
         _deviceId,
+        note: note, // kirim note ke backend
       );
       final end = DateTime.now();
-      print(
-          "Waktu analisis gambar: ${end.difference(start).inMilliseconds} ms");
+      print("Waktu analisis gambar: ${end.difference(start).inMilliseconds} ms");
 
       final label = response['detected'];
       final confidence = response['confidence'];
-      final explanation =
-          response['explanation'] ?? "Tidak ditemukan penyakit.";
+      final explanation = response['explanation'] ?? "Tidak ditemukan penyakit.";
 
       String messageText = (label != null)
           ? "Deteksi: *$label* ($confidence%)\n\n$explanation"

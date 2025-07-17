@@ -40,14 +40,21 @@ class ImageService {
   }
 
   // Upload image to Flask backend
-  Future<Map<String, dynamic>> uploadAndAnalyzeImage(File imageFile, String sessionId, String deviceId) async {
-    try {
+  Future<Map<String, dynamic>> uploadAndAnalyzeImage(File imageFile, String sessionId, String deviceId, {String? note}) async {
+    try {      
+      if (!imageFile.existsSync()) {
+        throw Exception('File gambar tidak ditemukan.');
+      }
+      
       final uri = Uri.parse('${ApiConfig.baseUrl}/api/analyze/image');
       final request = http.MultipartRequest('POST', uri);
 
       request.fields['session_id'] = sessionId;
-      request.fields['device_id'] = deviceId; // ✅ Tambahkan ini!
+      request.fields['device_id'] = deviceId;
 
+      if (note != null && note.trim().isNotEmpty) {
+        request.fields['note'] = note;
+      }
       final fileLength = await imageFile.length();
       final stream = http.ByteStream(imageFile.openRead());
 
@@ -69,7 +76,8 @@ class ImageService {
       if (response.statusCode == 200) {
         return json.decode(response.body);
       } else {
-        throw Exception('Gagal mengunggah gambar: ${response.statusCode} ${response.body}');
+        throw Exception(
+            'Gagal mengunggah gambar: ${response.statusCode} ${response.body}');
       }
     } catch (e) {
       debugPrint('Error during image upload: $e');

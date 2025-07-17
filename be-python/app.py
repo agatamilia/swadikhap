@@ -14,7 +14,6 @@ from flask_ngrok import run_with_ngrok
 from flask_cors import CORS
 from flask_migrate import Migrate
 import base64
-import os
 from roboflow import Roboflow
 from PIL import Image
 
@@ -542,7 +541,7 @@ def analyze_image():
                     content=prompt,
                     role="user",
                     timestamp=int(datetime.now().timestamp() * 1000),
-                    image_path=f"/uploads/temp/{device_id}/images/{os.path.basename(filepath)}"
+                    image_path=f"/uploads/temp/{device_id}/images/{os.path.basename(filepath)}",
                 ))
                 db.session.commit()
         except Exception as db_err:

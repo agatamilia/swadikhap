@@ -280,7 +280,7 @@ class ApiService {
   }
 
   // File upload
-  Future<Map<String, dynamic>> uploadImage(File file, String sessionId, String deviceId) async {
+  Future<Map<String, dynamic>> uploadImage(File file, String sessionId, String deviceId,{String? note}) async {
     try {
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(
@@ -290,6 +290,7 @@ class ApiService {
         ),
         'session_id': sessionId,
         'device_id': deviceId,
+        if (note != null && note.trim().isNotEmpty) 'note': note,
       });
       
       final response = await _requestWithRetry(
